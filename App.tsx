@@ -92,7 +92,7 @@ const App: React.FC = () => {
             <div className="bg-emerald-600 p-2 rounded-lg">
               <LayoutDashboard className="text-white" size={24} />
             </div>
-            <h1 className="text-xl font-bold text-white tracking-tight">CrediMaster <span className="text-emerald-500">Pro</span></h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">Giliarde <span className="text-emerald-500">AGI</span></h1>
           </div>
           <button 
             onClick={() => setShowForm(!showForm)}
