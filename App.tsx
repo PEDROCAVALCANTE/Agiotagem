@@ -14,6 +14,11 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Filter out soft-deleted clients for the UI
+  const activeClients = useMemo(() => {
+    return clients.filter(c => !c.isDeleted).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  }, [clients]);
+
   const [showForm, setShowForm] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -49,7 +54,8 @@ const App: React.FC = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    clients.forEach(client => {
+    // Only check active clients
+    activeClients.forEach(client => {
       if (!client.installmentsList) return;
 
       client.installmentsList.forEach(inst => {
@@ -76,7 +82,7 @@ const App: React.FC = () => {
 
     // Sort: Overdue first, then today, then tomorrow
     return alerts.sort((a, b) => a.daysDue - b.daysDue);
-  }, [clients]);
+  }, [activeClients]);
 
   const addClient = (client: Client) => {
     setClients([client, ...clients]);
@@ -85,8 +91,13 @@ const App: React.FC = () => {
   };
 
   const removeClient = (id: string) => {
-    if(window.confirm('Tem certeza que deseja remover este cliente? Todos os dados serão perdidos.')) {
-      setClients(clients.filter(c => c.id !== id));
+    if(window.confirm('Tem certeza que deseja remover este cliente?')) {
+      // Soft Delete: Mark as deleted and update timestamp
+      setClients(prevClients => prevClients.map(c => 
+        c.id === id 
+        ? { ...c, isDeleted: true, lastUpdated: Date.now() } 
+        : c
+      ));
       setAiInsight('');
     }
   };
@@ -106,7 +117,8 @@ const App: React.FC = () => {
 
       return {
         ...client,
-        installmentsList: updatedInstallments
+        installmentsList: updatedInstallments,
+        lastUpdated: Date.now() // Update timestamp on payment change
       };
     }));
   };
@@ -172,37 +184,46 @@ const App: React.FC = () => {
         const parsed = JSON.parse(jsonString);
         
         if (Array.isArray(parsed)) {
+           const importedClients = parsed as Client[];
+
            if (mode === 'replace') {
-               if(window.confirm(`ATENÇÃO: Isso APAGARÁ todos os dados atuais e restaurará os dados importados (${parsed.length} clientes).\n\nOs dados atuais serão perdidos. Deseja continuar?`)) {
-                  setClients(parsed);
+               if(window.confirm(`ATENÇÃO: Isso APAGARÁ todos os dados atuais e restaurará os dados importados (${importedClients.length} clientes).\n\nOs dados atuais serão perdidos. Deseja continuar?`)) {
+                  setClients(importedClients);
                   setShowSyncModal(false);
                   alert('Dados substituídos com sucesso!');
                }
            } else {
-               // MERGE LOGIC
+               // MERGE LOGIC WITH TIMESTAMP AND SOFT DELETE
                const currentMap = new Map(clients.map(c => [c.id, c] as [string, Client]));
                let addedCount = 0;
                let updatedCount = 0;
 
-               parsed.forEach((importedClient: Client) => {
-                   if (currentMap.has(importedClient.id)) {
-                       // Update existing (Import wins over local)
-                       currentMap.set(importedClient.id, importedClient);
-                       updatedCount++;
+               importedClients.forEach((importedClient) => {
+                   const localClient = currentMap.get(importedClient.id);
+                   
+                   if (localClient) {
+                       // CONFLICT RESOLUTION: Check timestamps
+                       const localTime = localClient.lastUpdated || 0;
+                       const importedTime = importedClient.lastUpdated || 0;
+
+                       // If imported data is newer, overwrite local
+                       if (importedTime > localTime) {
+                           currentMap.set(importedClient.id, importedClient);
+                           updatedCount++;
+                       }
+                       // If local is newer, do nothing (keep local)
                    } else {
-                       // Add new
+                       // New client (doesn't exist locally)
                        currentMap.set(importedClient.id, importedClient);
                        addedCount++;
                    }
                });
 
                const mergedList = Array.from(currentMap.values());
-               // Sort by most recent start date
-               mergedList.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
                
                setClients(mergedList);
                setShowSyncModal(false);
-               alert(`Sucesso! Carteiras combinadas.\n\n+ ${addedCount} novos clientes adicionados.\n~ ${updatedCount} clientes atualizados.`);
+               alert(`Sincronização Concluída!\n\nRegistros processados: ${addedCount + updatedCount}\n\nNota: Clientes que você excluiu recentemente agora permanecerão excluídos em ambos os aparelhos.`);
            }
         } else {
           alert('Dados inválidos. Certifique-se de copiar o código gerado pelo Giliarde AGI.');
@@ -214,25 +235,25 @@ const App: React.FC = () => {
   };
 
   const summary: FinancialSummary = useMemo(() => {
-    const totalInvested = clients.reduce((sum, c) => sum + c.principal, 0);
-    const totalRevenueExpected = clients.reduce((sum, c) => sum + (c.principal * (1 + c.interestRate / 100)), 0);
+    const totalInvested = activeClients.reduce((sum, c) => sum + c.principal, 0);
+    const totalRevenueExpected = activeClients.reduce((sum, c) => sum + (c.principal * (1 + c.interestRate / 100)), 0);
     const totalProfit = totalRevenueExpected - totalInvested;
     
     return {
       totalInvested,
       totalRevenueExpected,
       totalProfit,
-      activeClients: clients.length,
-      averageRoi: clients.length ? (totalProfit / totalInvested) * 100 : 0
+      activeClients: activeClients.length,
+      averageRoi: activeClients.length ? (totalProfit / totalInvested) * 100 : 0
     };
-  }, [clients]);
+  }, [activeClients]);
 
-  const progressionData = useMemo(() => calculateProgression(clients), [clients]);
+  const progressionData = useMemo(() => calculateProgression(activeClients), [activeClients]);
 
   const handleAiAnalysis = async () => {
-    if (clients.length === 0) return;
+    if (activeClients.length === 0) return;
     setIsAnalyzing(true);
-    const result = await analyzePortfolio(clients);
+    const result = await analyzePortfolio(activeClients);
     setAiInsight(result);
     setIsAnalyzing(false);
   };
@@ -409,7 +430,7 @@ const App: React.FC = () => {
                        className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-3 rounded-lg text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all"
                     >
                        <div className="flex items-center gap-2"><Merge size={18} /> Mesclar (Combinar)</div>
-                       <span className="text-[10px] opacity-80 font-normal">Junta Paulo + Pedro</span>
+                       <span className="text-[10px] opacity-80 font-normal">Sincroniza apagados e novos</span>
                     </button>
 
                     <button 
@@ -434,7 +455,7 @@ const App: React.FC = () => {
         )}
 
         {/* Charts Section */}
-        {clients.length > 0 && (
+        {activeClients.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
             <div className="lg:col-span-2">
               <ChartSection data={progressionData} />
@@ -448,7 +469,7 @@ const App: React.FC = () => {
                 </h2>
                 <button 
                   onClick={handleAiAnalysis}
-                  disabled={isAnalyzing || clients.length === 0}
+                  disabled={isAnalyzing || activeClients.length === 0}
                   className="text-xs bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white px-3 py-1 rounded transition-colors"
                 >
                   {isAnalyzing ? 'Analisando...' : 'Gerar Relatório'}
@@ -472,7 +493,7 @@ const App: React.FC = () => {
                 )}
               </div>
               
-              {clients.length > 0 && (
+              {activeClients.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-slate-700 text-xs text-slate-500">
                   <p>ROI Médio da Carteira: <span className="text-emerald-400 font-bold">{summary.averageRoi.toFixed(1)}%</span></p>
                 </div>
@@ -485,7 +506,7 @@ const App: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-white mb-6 pl-1 border-l-4 border-emerald-500">Carteira de Clientes</h2>
           <ClientList 
-            clients={clients} 
+            clients={activeClients} 
             onDelete={removeClient} 
             onTogglePayment={handleTogglePayment}
           />

@@ -15,6 +15,10 @@ export interface Client {
   startDate: string;
   status: 'Active' | 'Completed' | 'Late';
   installmentsList: Installment[]; // Detailed breakdown
+  
+  // Sync Fields
+  isDeleted?: boolean; // If true, client is hidden (soft deleted)
+  lastUpdated?: number; // Timestamp for sync conflict resolution
 }
 
 export interface FinancialSummary {

@@ -76,7 +76,9 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel })
       interestRate: calculatedRate, // Storing the derived rate
       startDate: startDate,
       status: 'Active',
-      installmentsList: generatedInstallments
+      installmentsList: generatedInstallments,
+      isDeleted: false,
+      lastUpdated: Date.now()
     };
 
     onAddClient(newClient);
