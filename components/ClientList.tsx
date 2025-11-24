@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Clock, TrendingUp } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -82,6 +82,9 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
               // Calculate paid installments safely
               const paidCount = client.installmentsList ? client.installmentsList.filter(i => i.isPaid).length : 0;
               const progress = (paidCount / client.installments) * 100;
+
+              // Calculate Profit for the summary card
+              const totalProfit = totalReturn - client.principal;
 
               return (
                 <React.Fragment key={client.id}>
@@ -181,6 +184,30 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                             </div>
                                         );
                                     })}
+
+                                    {/* Lucro/Interest Summary Card */}
+                                    <div className="border rounded-lg p-3 transition-all bg-purple-600/10 border-purple-500/50 text-purple-300 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                            <TrendingUp size={48} />
+                                        </div>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="font-mono font-bold text-sm text-purple-400">EXTRA</span>
+                                            <div className="text-xs font-bold px-2 py-0.5 rounded bg-purple-900/50 border border-purple-500/30 uppercase text-purple-200">
+                                                LUCRO
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex justify-between items-end mt-4">
+                                            <div>
+                                                <div className="text-xs opacity-70">Rendimento Total</div>
+                                                <div className="font-bold text-lg mt-1 text-purple-300">{formatCurrency(totalProfit)}</div>
+                                            </div>
+                                            <div className="p-2 rounded-full bg-slate-800/50 text-purple-400 cursor-default">
+                                                <TrendingUp size={20} />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
                             </div>
                           </td>
