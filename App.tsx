@@ -6,7 +6,7 @@ import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, FileJson, Copy, Smartphone, X } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, FileJson, Copy, Smartphone, X, Merge, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>(() => {
@@ -127,7 +127,7 @@ const App: React.FC = () => {
     setShowSettings(false);
   };
 
-  // 2. File Import
+  // 2. File Import - Reads file and opens modal for decision
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -136,10 +136,14 @@ const App: React.FC = () => {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        processImportedData(content);
+        // Validate JSON simply
+        JSON.parse(content); 
+        setSyncText(content);
+        setShowSyncModal(true);
+        setShowSettings(false);
       } catch (err) {
         console.error(err);
-        alert('Erro ao ler o arquivo. O formato pode estar corrompido.');
+        alert('O arquivo selecionado não é um backup válido (JSON corrompido).');
       }
       event.target.value = '';
     };
@@ -162,16 +166,43 @@ const App: React.FC = () => {
     setShowSettings(false);
   }
 
-  // Common Import Logic
-  const processImportedData = (jsonString: string) => {
+  // Common Processing Logic (Merge vs Replace)
+  const processImportedData = (jsonString: string, mode: 'merge' | 'replace') => {
       try {
         const parsed = JSON.parse(jsonString);
         
         if (Array.isArray(parsed)) {
-           if(window.confirm(`Encontrados ${parsed.length} clientes. Substituir dados atuais?`)) {
-              setClients(parsed);
-              alert('Sincronização realizada com sucesso!');
-              setShowSyncModal(false);
+           if (mode === 'replace') {
+               if(window.confirm(`ATENÇÃO: Isso APAGARÁ todos os dados atuais e restaurará os dados importados (${parsed.length} clientes).\n\nOs dados atuais serão perdidos. Deseja continuar?`)) {
+                  setClients(parsed);
+                  setShowSyncModal(false);
+                  alert('Dados substituídos com sucesso!');
+               }
+           } else {
+               // MERGE LOGIC
+               const currentMap = new Map(clients.map(c => [c.id, c] as [string, Client]));
+               let addedCount = 0;
+               let updatedCount = 0;
+
+               parsed.forEach((importedClient: Client) => {
+                   if (currentMap.has(importedClient.id)) {
+                       // Update existing (Import wins over local)
+                       currentMap.set(importedClient.id, importedClient);
+                       updatedCount++;
+                   } else {
+                       // Add new
+                       currentMap.set(importedClient.id, importedClient);
+                       addedCount++;
+                   }
+               });
+
+               const mergedList = Array.from(currentMap.values());
+               // Sort by most recent start date
+               mergedList.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+               
+               setClients(mergedList);
+               setShowSyncModal(false);
+               alert(`Sucesso! Carteiras combinadas.\n\n+ ${addedCount} novos clientes adicionados.\n~ ${updatedCount} clientes atualizados.`);
            }
         } else {
           alert('Dados inválidos. Certifique-se de copiar o código gerado pelo Giliarde AGI.');
@@ -362,28 +393,32 @@ const App: React.FC = () => {
                    </button>
                 </div>
                 <p className="text-sm text-slate-400 mb-4">
-                   Cole abaixo o código que você copiou do outro dispositivo para atualizar os dados aqui.
-                   <span className="block mt-1 text-red-400 font-bold text-xs">⚠️ Isso substituirá os dados atuais!</span>
+                   Gerencie a importação dos seus dados. Você pode <strong>Mesclar</strong> (juntar os dados do outro dispositivo com os atuais) ou <strong>Substituir</strong> (apagar os atuais e usar apenas os novos).
                 </p>
                 <textarea 
-                  className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 font-mono focus:border-blue-500 focus:outline-none resize-none"
-                  placeholder='Cole o código JSON aqui... Ex: [{"id":"123",...}]'
+                  className="w-full h-32 bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 font-mono focus:border-blue-500 focus:outline-none resize-none mb-4"
+                  placeholder='O código aparecerá aqui...'
                   value={syncText}
                   onChange={(e) => setSyncText(e.target.value)}
                 ></textarea>
-                <div className="flex justify-end gap-3 mt-4">
+                
+                <div className="grid grid-cols-2 gap-4">
                     <button 
-                       onClick={() => setShowSyncModal(false)}
-                       className="px-4 py-2 text-slate-300 hover:text-white text-sm"
-                    >
-                       Cancelar
-                    </button>
-                    <button 
-                       onClick={() => processImportedData(syncText)}
+                       onClick={() => processImportedData(syncText, 'merge')}
                        disabled={!syncText}
-                       className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                       className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-3 rounded-lg text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all"
                     >
-                       <Upload size={16} /> Carregar Dados
+                       <div className="flex items-center gap-2"><Merge size={18} /> Mesclar (Combinar)</div>
+                       <span className="text-[10px] opacity-80 font-normal">Junta Paulo + Pedro</span>
+                    </button>
+
+                    <button 
+                       onClick={() => processImportedData(syncText, 'replace')}
+                       disabled={!syncText}
+                       className="bg-red-600/80 hover:bg-red-500 disabled:opacity-50 text-white px-4 py-3 rounded-lg text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all"
+                    >
+                       <div className="flex items-center gap-2"><RefreshCw size={18} /> Substituir Tudo</div>
+                        <span className="text-[10px] opacity-80 font-normal">Apaga atual e usa o novo</span>
                     </button>
                 </div>
              </div>
