@@ -6,7 +6,7 @@ import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, FileJson } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, FileJson, Copy, Smartphone, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>(() => {
@@ -17,6 +17,8 @@ const App: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncText, setSyncText] = useState('');
   const [aiInsight, setAiInsight] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
@@ -109,7 +111,9 @@ const App: React.FC = () => {
     }));
   };
 
-  // Data Persistence Handlers
+  // --- Data Persistence Handlers ---
+
+  // 1. File Export
   const handleExportData = () => {
     const dataStr = JSON.stringify(clients, null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -123,6 +127,7 @@ const App: React.FC = () => {
     setShowSettings(false);
   };
 
+  // 2. File Import
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -131,30 +136,50 @@ const App: React.FC = () => {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        const parsed = JSON.parse(content);
-        
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].id) {
-           if(window.confirm(`Encontrados ${parsed.length} clientes no arquivo. Deseja substituir sua lista atual por estes dados?`)) {
-              setClients(parsed);
-              alert('Dados importados com sucesso!');
-              setShowSettings(false);
-           }
-        } else if (Array.isArray(parsed) && parsed.length === 0) {
-            if(window.confirm('O arquivo está vazio. Deseja limpar sua lista atual?')) {
-                setClients([]);
-                setShowSettings(false);
-            }
-        } else {
-          alert('Arquivo inválido. Certifique-se de usar um backup gerado pelo Giliarde AGI.');
-        }
+        processImportedData(content);
       } catch (err) {
         console.error(err);
         alert('Erro ao ler o arquivo. O formato pode estar corrompido.');
       }
-      // Reset input value to allow selecting same file again if needed
       event.target.value = '';
     };
     reader.readAsText(file);
+  };
+
+  // 3. Clipboard Copy
+  const handleCopyData = () => {
+    const dataStr = JSON.stringify(clients);
+    navigator.clipboard.writeText(dataStr).then(() => {
+      alert('Dados copiados! Envie para o seu outro dispositivo (WhatsApp, E-mail, etc) e use a opção "Colar Dados".');
+      setShowSettings(false);
+    });
+  };
+
+  // 4. Open Paste Modal
+  const handleOpenSyncModal = () => {
+    setSyncText('');
+    setShowSyncModal(true);
+    setShowSettings(false);
+  }
+
+  // Common Import Logic
+  const processImportedData = (jsonString: string) => {
+      try {
+        const parsed = JSON.parse(jsonString);
+        
+        if (Array.isArray(parsed)) {
+           if(window.confirm(`Encontrados ${parsed.length} clientes. Substituir dados atuais?`)) {
+              setClients(parsed);
+              alert('Sincronização realizada com sucesso!');
+              setShowSyncModal(false);
+           }
+        } else {
+          alert('Dados inválidos. Certifique-se de copiar o código gerado pelo Giliarde AGI.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erro ao processar dados. O formato está incorreto.');
+      }
   };
 
   const summary: FinancialSummary = useMemo(() => {
@@ -217,20 +242,39 @@ const App: React.FC = () => {
                 </button>
 
                 {showSettings && (
-                    <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in p-2">
-                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Dados & Backup</div>
+                    <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in p-2">
+                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Sincronização PC/Mobile</div>
+                        
+                        <button 
+                            onClick={handleCopyData}
+                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-emerald-400 hover:bg-slate-800 hover:text-emerald-300 rounded-lg transition-colors font-medium"
+                        >
+                            <Copy size={16} />
+                            <span>Copiar Código (Para enviar)</span>
+                        </button>
+
+                        <button 
+                            onClick={handleOpenSyncModal}
+                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-blue-400 hover:bg-slate-800 hover:text-blue-300 rounded-lg transition-colors font-medium"
+                        >
+                            <Smartphone size={16} />
+                            <span>Colar Código (Recebido)</span>
+                        </button>
+
+                        <div className="my-2 border-t border-slate-800"></div>
+                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Backup Arquivo</div>
                         
                         <button 
                             onClick={handleExportData}
                             className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
                         >
-                            <Download size={16} className="text-blue-400" />
-                            <span>Baixar Backup (JSON)</span>
+                            <Download size={16} className="text-slate-400" />
+                            <span>Baixar Backup .json</span>
                         </button>
                         
                         <label className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors cursor-pointer relative">
-                            <Upload size={16} className="text-emerald-400" />
-                            <span>Restaurar Backup</span>
+                            <Upload size={16} className="text-slate-400" />
+                            <span>Restaurar Backup .json</span>
                             <input 
                                 type="file" 
                                 accept=".json" 
@@ -238,12 +282,6 @@ const App: React.FC = () => {
                                 className="absolute inset-0 opacity-0 cursor-pointer"
                             />
                         </label>
-                        
-                        <div className="border-t border-slate-800 mt-2 pt-2 px-3 pb-1">
-                            <p className="text-[10px] text-slate-500 leading-tight">
-                                Use isso para transferir dados entre Celular e PC. Os dados são salvos localmente no seu dispositivo.
-                            </p>
-                        </div>
                     </div>
                 )}
             </div>
@@ -311,6 +349,47 @@ const App: React.FC = () => {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* Sync Modal */}
+        {showSyncModal && (
+          <div className="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+             <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-lg w-full shadow-2xl animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Smartphone size={20} className="text-blue-400" /> Sincronizar Dados
+                   </h3>
+                   <button onClick={() => setShowSyncModal(false)} className="text-slate-400 hover:text-white">
+                      <X size={20} />
+                   </button>
+                </div>
+                <p className="text-sm text-slate-400 mb-4">
+                   Cole abaixo o código que você copiou do outro dispositivo para atualizar os dados aqui.
+                   <span className="block mt-1 text-red-400 font-bold text-xs">⚠️ Isso substituirá os dados atuais!</span>
+                </p>
+                <textarea 
+                  className="w-full h-40 bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 font-mono focus:border-blue-500 focus:outline-none resize-none"
+                  placeholder='Cole o código JSON aqui... Ex: [{"id":"123",...}]'
+                  value={syncText}
+                  onChange={(e) => setSyncText(e.target.value)}
+                ></textarea>
+                <div className="flex justify-end gap-3 mt-4">
+                    <button 
+                       onClick={() => setShowSyncModal(false)}
+                       className="px-4 py-2 text-slate-300 hover:text-white text-sm"
+                    >
+                       Cancelar
+                    </button>
+                    <button 
+                       onClick={() => processImportedData(syncText)}
+                       disabled={!syncText}
+                       className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                    >
+                       <Upload size={16} /> Carregar Dados
+                    </button>
+                </div>
+             </div>
+          </div>
+        )}
+
         {/* KPI Section */}
         <DashboardCards summary={summary} />
 
