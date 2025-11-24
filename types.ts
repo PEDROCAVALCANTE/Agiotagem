@@ -13,7 +13,7 @@ export interface Client {
   installments: number; // Number of payments
   interestRate: number; // Monthly percentage (e.g., 10, 20)
   startDate: string;
-  status: 'Active' | 'Completed' | 'Late';
+  status: 'Active' | 'Completed' | 'Late'; // Status field
   installmentsList: Installment[]; // Detailed breakdown
   
   // Sync Fields

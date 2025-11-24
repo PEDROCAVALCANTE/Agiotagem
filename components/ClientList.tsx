@@ -51,6 +51,14 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     return 'ABERTO';
   }
 
+  const getClientStatusBadge = (status: string) => {
+    switch(status) {
+        case 'Completed': return <span className="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded border border-blue-500/30 uppercase font-bold">Concluído</span>;
+        case 'Late': return <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded border border-red-500/30 uppercase font-bold">Atrasado</span>;
+        default: return <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 uppercase font-bold">Ativo</span>;
+    }
+  }
+
   if (clients.length === 0) {
     return (
       <div className="text-center py-12 bg-slate-800/50 border border-slate-700/50 rounded-xl border-dashed">
@@ -93,6 +101,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex items-center gap-2">
                           <User size={14} className="text-blue-400"/> {client.name}
+                          {getClientStatusBadge(client.status)}
                         </span>
                         {client.phone && (
                           <span className="text-xs text-slate-400 flex items-center gap-2 mt-1">

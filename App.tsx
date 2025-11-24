@@ -6,12 +6,28 @@ import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, FileJson, Copy, Smartphone, X, Merge, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, CheckCircle, Database, Download, Upload, Copy, Smartphone, X, Merge, RefreshCw, Share2, Link } from 'lucide-react';
 
 const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('clients');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+            // Migration: Ensure all clients have a timestamp for sync logic
+            return parsed.map((c: any) => ({
+                ...c,
+                status: c.status || 'Active',
+                lastUpdated: c.lastUpdated || Date.now(), // Backfill timestamp if missing
+                isDeleted: c.isDeleted || false
+            }));
+        }
+        return [];
+    } catch (e) {
+        console.error("Failed to parse clients", e);
+        return [];
+    }
   });
 
   // Filter out soft-deleted clients for the UI
@@ -47,6 +63,49 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('clients', JSON.stringify(clients));
   }, [clients]);
+
+  // URL Sync Check on Mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const syncData = params.get('sync');
+    if (syncData) {
+        try {
+            const decoded = atob(syncData);
+            setSyncText(decoded);
+            setShowSyncModal(true);
+            // Clean URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (e) {
+            console.error("Invalid sync link", e);
+            alert("O link de sincronização é inválido ou está corrompido.");
+        }
+    }
+  }, []);
+
+  // Status check on mount: Update 'Late' status based on current date
+  useEffect(() => {
+    setClients(prevClients => {
+      let hasChanges = false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const updated = prevClients.map(client => {
+        if (client.isDeleted || client.status === 'Completed') return client;
+
+        // Check if any unpaid installment is overdue
+        const isLate = client.installmentsList.some(inst => !inst.isPaid && new Date(inst.dueDate) < today);
+        const newStatus = isLate ? 'Late' : 'Active';
+
+        if (client.status !== newStatus) {
+          hasChanges = true;
+          return { ...client, status: newStatus };
+        }
+        return client;
+      });
+
+      return hasChanges ? updated : prevClients;
+    });
+  }, []);
 
   // Notification Logic
   const notifications = useMemo(() => {
@@ -115,9 +174,23 @@ const App: React.FC = () => {
         return inst;
       });
 
+      // Recalculate Status
+      let newStatus: 'Active' | 'Completed' | 'Late' = 'Active';
+      const allPaid = updatedInstallments.every(i => i.isPaid);
+      
+      if (allPaid) {
+        newStatus = 'Completed';
+      } else {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const hasOverdue = updatedInstallments.some(i => !i.isPaid && new Date(i.dueDate) < today);
+        if (hasOverdue) newStatus = 'Late';
+      }
+
       return {
         ...client,
         installmentsList: updatedInstallments,
+        status: newStatus,
         lastUpdated: Date.now() // Update timestamp on payment change
       };
     }));
@@ -171,7 +244,26 @@ const App: React.FC = () => {
     });
   };
 
-  // 4. Open Paste Modal
+  // 4. Generate Share Link
+  const handleShareLink = () => {
+      const dataStr = JSON.stringify(clients);
+      const encoded = btoa(dataStr);
+      
+      // Warn if data is too big for URL
+      if (encoded.length > 5000) {
+          alert("Seus dados são muito grandes para gerar um link direto (Limite do navegador). Por favor, use a opção 'Copiar Código' ou 'Baixar Backup'.");
+          return;
+      }
+
+      const url = `${window.location.origin}${window.location.pathname}?sync=${encoded}`;
+      
+      navigator.clipboard.writeText(url).then(() => {
+        alert('Link de Sincronização copiado!\n\nEnvie este link para seu celular/computador. Ao clicar nele, os dados serão importados automaticamente.');
+        setShowSettings(false);
+      });
+  };
+
+  // 5. Open Paste Modal
   const handleOpenSyncModal = () => {
     setSyncText('');
     setShowSyncModal(true);
@@ -194,17 +286,18 @@ const App: React.FC = () => {
                }
            } else {
                // MERGE LOGIC WITH TIMESTAMP AND SOFT DELETE
-               const currentMap = new Map(clients.map(c => [c.id, c] as [string, Client]));
+               // Ensure current clients have valid timestamps for comparison
+               const currentMap = new Map(clients.map(c => [c.id, { ...c, lastUpdated: c.lastUpdated || 0 }] as [string, Client]));
+               
                let addedCount = 0;
                let updatedCount = 0;
 
-               importedClients.forEach((importedClient) => {
+               importedClients.forEach((importedClient: Client) => {
                    const localClient = currentMap.get(importedClient.id);
-                   
+                   const importedTime = importedClient.lastUpdated || 0;
+
                    if (localClient) {
-                       // CONFLICT RESOLUTION: Check timestamps
                        const localTime = localClient.lastUpdated || 0;
-                       const importedTime = importedClient.lastUpdated || 0;
 
                        // If imported data is newer, overwrite local
                        if (importedTime > localTime) {
@@ -223,7 +316,7 @@ const App: React.FC = () => {
                
                setClients(mergedList);
                setShowSyncModal(false);
-               alert(`Sincronização Concluída!\n\nRegistros processados: ${addedCount + updatedCount}\n\nNota: Clientes que você excluiu recentemente agora permanecerão excluídos em ambos os aparelhos.`);
+               alert(`Sincronização Concluída!\n\nRegistros novos/atualizados: ${addedCount + updatedCount}\n\nAgora seus dispositivos devem estar iguais.`);
            }
         } else {
           alert('Dados inválidos. Certifique-se de copiar o código gerado pelo Giliarde AGI.');
@@ -287,34 +380,46 @@ const App: React.FC = () => {
             <div className="relative" ref={settingsRef}>
                 <button 
                     onClick={() => setShowSettings(!showSettings)}
-                    className={`p-2 rounded-lg transition-all ${showSettings ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                    className={`p-2 rounded-lg transition-all flex items-center gap-2 ${showSettings ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50' : 'text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent'}`}
                     title="Banco de Dados / Sincronização"
                 >
-                    <Database size={20} />
+                    <RefreshCw size={20} />
+                    <span className="hidden md:inline text-sm font-bold">Sincronizar</span>
                 </button>
 
                 {showSettings && (
                     <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in p-2">
-                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Sincronização PC/Mobile</div>
+                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Transferência Rápida</div>
                         
                         <button 
-                            onClick={handleCopyData}
-                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-emerald-400 hover:bg-slate-800 hover:text-emerald-300 rounded-lg transition-colors font-medium"
+                            onClick={handleShareLink}
+                            className="w-full text-left flex items-center gap-3 px-3 py-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 rounded-lg transition-colors font-bold mb-2"
                         >
-                            <Copy size={16} />
-                            <span>Copiar Código (Para enviar)</span>
+                            <Link size={16} />
+                            <span>Copiar Link de Sincronização</span>
+                        </button>
+                        <p className="text-[10px] text-slate-500 px-3 mb-2 leading-tight">Envie este link para seu outro dispositivo e abra-o para mesclar os dados automaticamente.</p>
+
+                        <div className="my-2 border-t border-slate-800"></div>
+
+                        <button 
+                            onClick={handleCopyData}
+                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
+                        >
+                            <Copy size={16} className="text-slate-400" />
+                            <span>Copiar Código</span>
                         </button>
 
                         <button 
                             onClick={handleOpenSyncModal}
-                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-blue-400 hover:bg-slate-800 hover:text-blue-300 rounded-lg transition-colors font-medium"
+                            className="w-full text-left flex items-center gap-3 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg transition-colors"
                         >
-                            <Smartphone size={16} />
-                            <span>Colar Código (Recebido)</span>
+                            <Smartphone size={16} className="text-slate-400" />
+                            <span>Colar Código Manualmente</span>
                         </button>
 
                         <div className="my-2 border-t border-slate-800"></div>
-                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Backup Arquivo</div>
+                        <div className="text-xs font-bold text-slate-500 uppercase px-2 py-1 mb-1">Arquivo</div>
                         
                         <button 
                             onClick={handleExportData}
@@ -414,7 +519,7 @@ const App: React.FC = () => {
                    </button>
                 </div>
                 <p className="text-sm text-slate-400 mb-4">
-                   Gerencie a importação dos seus dados. Você pode <strong>Mesclar</strong> (juntar os dados do outro dispositivo com os atuais) ou <strong>Substituir</strong> (apagar os atuais e usar apenas os novos).
+                   Dados detectados! O que você deseja fazer com os clientes recebidos?
                 </p>
                 <textarea 
                   className="w-full h-32 bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 font-mono focus:border-blue-500 focus:outline-none resize-none mb-4"
@@ -429,8 +534,8 @@ const App: React.FC = () => {
                        disabled={!syncText}
                        className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-4 py-3 rounded-lg text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all"
                     >
-                       <div className="flex items-center gap-2"><Merge size={18} /> Mesclar (Combinar)</div>
-                       <span className="text-[10px] opacity-80 font-normal">Sincroniza apagados e novos</span>
+                       <div className="flex items-center gap-2"><Merge size={18} /> Mesclar (Juntar)</div>
+                       <span className="text-[10px] opacity-80 font-normal">Soma os dados (Desktop + Mobile)</span>
                     </button>
 
                     <button 
