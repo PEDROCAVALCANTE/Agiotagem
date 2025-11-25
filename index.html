@@ -25,6 +25,26 @@
         background-color: #020617; /* slate-950 */
         color: #e2e8f0;
       }
+
+      /* Custom Animation for Overdue Clients */
+      @keyframes pulse-red {
+        0% {
+          background-color: rgba(239, 68, 68, 0.05);
+          box-shadow: inset 4px 0 0 0 rgba(239, 68, 68, 0.4);
+        }
+        50% {
+          background-color: rgba(239, 68, 68, 0.15);
+          box-shadow: inset 4px 0 0 0 rgba(239, 68, 68, 1);
+        }
+        100% {
+          background-color: rgba(239, 68, 68, 0.05);
+          box-shadow: inset 4px 0 0 0 rgba(239, 68, 68, 0.4);
+        }
+      }
+
+      .animate-pulse-red {
+        animation: pulse-red 2s infinite ease-in-out;
+      }
     </style>
   <script type="importmap">
 {

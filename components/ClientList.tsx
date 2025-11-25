@@ -67,6 +67,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
   };
 
   const theme = themeClasses[colorTheme];
+  const isRedTheme = colorTheme === 'red';
 
   return (
     <div className={`rounded-xl border ${theme.border} overflow-hidden mb-6 shadow-lg`}>
@@ -100,13 +101,25 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
               const progress = (paidCount / client.installments) * 100;
               const totalProfit = totalReturn - client.principal;
 
+              // Apply special highlighting for late clients (red theme)
+              const rowClass = isRedTheme 
+                ? `animate-pulse-red ${isExpanded ? '' : ''}` // Animation handles bg and border
+                : `${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'}`;
+
               return (
                 <React.Fragment key={client.id}>
-                  <tr className={`transition-colors ${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'}`}>
+                  <tr className={`transition-colors border-b border-slate-700/50 ${rowClass}`}>
                     <td className="px-6 py-4 cursor-pointer" onClick={() => onExpand(client.id)}>
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex items-center gap-2">
-                          <User size={14} className="text-slate-400"/> {client.name}
+                          <User size={14} className={isRedTheme ? "text-red-400" : "text-slate-400"}/> 
+                          {client.name}
+                          {isRedTheme && (
+                              <span className="relative flex h-2 w-2 ml-1">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                              </span>
+                          )}
                         </span>
                         {client.phone && (
                           <span className="text-xs text-slate-500 flex items-center gap-2 mt-1">
@@ -124,7 +137,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                     <td className="px-6 py-4">
                        <div className="flex items-center gap-2 w-24">
                           <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                             <div className={`h-full transition-all duration-500 ${colorTheme === 'blue' ? 'bg-blue-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
+                             <div className={`h-full transition-all duration-500 ${colorTheme === 'blue' ? 'bg-blue-500' : colorTheme === 'red' ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
                           </div>
                           <span className="text-[10px] text-slate-500 font-mono">{paidCount}/{client.installments}</span>
                        </div>
@@ -159,7 +172,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                   </tr>
                   
                   {isExpanded && (
-                      <tr className="bg-slate-900/40 shadow-inner">
+                      <tr className={`${isRedTheme ? 'bg-red-900/10' : 'bg-slate-900/40'} shadow-inner`}>
                           <td colSpan={6} className="p-4">
                             <div className="bg-slate-900 rounded-xl p-4 border border-slate-700/50">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
