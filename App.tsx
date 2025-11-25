@@ -9,12 +9,23 @@ import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
 import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save } from 'lucide-react';
 
+// Hardcoded configuration provided by the user
+const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
+    apiKey: "AIzaSyCrsZQpDusua60XLcGXRfBIKb6exrRiP3I",
+    authDomain: "giliarde-agi.firebaseapp.com",
+    projectId: "giliarde-agi",
+    storageBucket: "giliarde-agi.firebasestorage.app",
+    messagingSenderId: "1052082323824",
+    appId: "1:1052082323824:web:c1acb45f34fc6b8ae44fb5"
+};
+
 const App: React.FC = () => {
-  // Cloud Config State
+  // Cloud Config State - Defaults to the hardcoded config if nothing is in localStorage
   const [cloudConfig, setCloudConfig] = useState<FirebaseConfig | null>(() => {
     const saved = localStorage.getItem('firebaseConfig');
-    return saved ? JSON.parse(saved) : null;
+    return saved ? JSON.parse(saved) : DEFAULT_FIREBASE_CONFIG;
   });
+  
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [configInput, setConfigInput] = useState('');
@@ -71,6 +82,12 @@ const App: React.FC = () => {
                 }));
             });
         });
+        
+        // If we just connected and have local clients but no cloud clients (or we want to sync up),
+        // we might want to push local to cloud. 
+        // For safety in this "auto-connect" version, let's just listen.
+        // But if the user explicitly saves something, it goes to cloud.
+        
         return () => unsubscribe();
       }
     }
@@ -183,8 +200,6 @@ const App: React.FC = () => {
         if (cleaned.endsWith(';')) cleaned = cleaned.slice(0, -1);
         
         // Attempt to fix unquoted keys (JavaScript object syntax to JSON)
-        // This regex finds keys that are not quoted and adds quotes
-        // Example: apiKey: "..." -> "apiKey": "..."
         const jsonString = cleaned.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
 
         const config = JSON.parse(jsonString);
