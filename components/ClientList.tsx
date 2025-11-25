@@ -339,20 +339,28 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                                         </div>
                                                     </div>
 
-                                                    {/* NEW: Annotation/Observation Card */}
-                                                    {loan.observation && (
-                                                      <div className="border rounded-lg p-3 transition-all bg-blue-900/10 border-blue-500/20 text-blue-300 relative overflow-hidden flex flex-col justify-between col-span-1 md:col-span-2 lg:col-span-1">
-                                                          <div className="flex justify-between items-start mb-1">
-                                                              <span className="font-mono font-bold text-sm text-blue-500">ANOTAÇÃO</span>
-                                                              <StickyNote size={16} className="text-blue-500/50" />
-                                                          </div>
-                                                          <div className="max-h-[60px] overflow-y-auto pr-1 custom-scrollbar">
-                                                              <p className="text-xs text-slate-300 italic break-words leading-relaxed">
-                                                                  "{loan.observation}"
-                                                              </p>
-                                                          </div>
-                                                      </div>
-                                                    )}
+                                                    {/* NEW: Annotation/Observation Card - Always Visible & Clickable */}
+                                                    <div 
+                                                        onClick={(e) => { e.stopPropagation(); onEditLoan(loan); }}
+                                                        className="border rounded-lg p-3 transition-all bg-blue-900/10 border-blue-500/20 text-blue-300 relative overflow-hidden flex flex-col justify-between col-span-1 cursor-pointer hover:bg-blue-900/20 group/note"
+                                                        title="Clique para editar anotações"
+                                                    >
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className="font-mono font-bold text-sm text-blue-500 group-hover/note:text-blue-400">ANOTAÇÃO</span>
+                                                            <StickyNote size={16} className="text-blue-500/50 group-hover/note:text-blue-400" />
+                                                        </div>
+                                                        <div className="max-h-[60px] overflow-y-auto pr-1 custom-scrollbar">
+                                                            {loan.observation ? (
+                                                                <p className="text-xs text-slate-300 italic break-words leading-relaxed">
+                                                                    "{loan.observation}"
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-xs text-slate-500 italic opacity-50 flex items-center gap-1 mt-1">
+                                                                    <Pencil size={10} /> Adicionar anotação...
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
