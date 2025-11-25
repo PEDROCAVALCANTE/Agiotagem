@@ -25,8 +25,10 @@ const getInstallmentStatusColor = (installment: Installment) => {
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(installment.dueDate);
-  dueDate.setHours(0, 0, 0, 0);
+  
+  // Robust Date Parsing
+  const [y, m, d] = installment.dueDate.split('-').map(Number);
+  const dueDate = new Date(y, m - 1, d);
   
   const diffTime = dueDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -42,8 +44,9 @@ const getStatusText = (installment: Installment) => {
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(installment.dueDate);
-  dueDate.setHours(0, 0, 0, 0);
+  
+  const [y, m, d] = installment.dueDate.split('-').map(Number);
+  const dueDate = new Date(y, m - 1, d);
   
   const diffTime = dueDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -101,9 +104,22 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
               const progress = (paidCount / client.installments) * 100;
               const totalProfit = totalReturn - client.principal;
 
-              // Apply special highlighting for late clients (red theme)
-              const rowClass = isRedTheme 
-                ? `animate-pulse-red ${isExpanded ? '' : ''}` // Animation handles bg and border
+              // Check dynamically if client has any overdue installments
+              // This ensures visual sync even if status update is pending or if viewing in a different list
+              const hasOverdue = client.installmentsList?.some(i => {
+                  if (i.isPaid) return false;
+                  const [y, m, d] = i.dueDate.split('-').map(Number);
+                  const dueDate = new Date(y, m - 1, d);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  return dueDate < today;
+              });
+
+              // Apply special highlighting for late clients (red theme) or dynamically detected overdue
+              const shouldPulse = isRedTheme || hasOverdue;
+
+              const rowClass = shouldPulse 
+                ? `animate-pulse-red` 
                 : `${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'}`;
 
               return (
@@ -112,9 +128,9 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                     <td className="px-6 py-4 cursor-pointer" onClick={() => onExpand(client.id)}>
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex items-center gap-2">
-                          <User size={14} className={isRedTheme ? "text-red-400" : "text-slate-400"}/> 
+                          <User size={14} className={shouldPulse ? "text-red-400" : "text-slate-400"}/> 
                           {client.name}
-                          {isRedTheme && (
+                          {shouldPulse && (
                               <span className="relative flex h-2 w-2 ml-1">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
@@ -137,7 +153,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                     <td className="px-6 py-4">
                        <div className="flex items-center gap-2 w-24">
                           <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
-                             <div className={`h-full transition-all duration-500 ${colorTheme === 'blue' ? 'bg-blue-500' : colorTheme === 'red' ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
+                             <div className={`h-full transition-all duration-500 ${colorTheme === 'blue' ? 'bg-blue-500' : shouldPulse ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
                           </div>
                           <span className="text-[10px] text-slate-500 font-mono">{paidCount}/{client.installments}</span>
                        </div>
@@ -172,7 +188,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                   </tr>
                   
                   {isExpanded && (
-                      <tr className={`${isRedTheme ? 'bg-red-900/10' : 'bg-slate-900/40'} shadow-inner`}>
+                      <tr className={`${shouldPulse ? 'bg-red-900/10' : 'bg-slate-900/40'} shadow-inner`}>
                           <td colSpan={6} className="p-4">
                             <div className="bg-slate-900 rounded-xl p-4 border border-slate-700/50">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
