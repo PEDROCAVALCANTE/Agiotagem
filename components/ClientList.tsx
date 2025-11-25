@@ -21,6 +21,7 @@ interface GroupedClient {
   totalProfit: number;
   overallStatus: 'Active' | 'Completed' | 'Late';
   hasOverdue: boolean;
+  hasObservation: boolean;
   earliestStartDate: string;
 }
 
@@ -186,6 +187,12 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                               </>
                           )}
 
+                          {group.hasObservation && !editingName && (
+                              <span title="Possui observações" className="text-slate-400 bg-slate-700/50 p-0.5 rounded">
+                                  <FileText size={10} />
+                              </span>
+                          )}
+
                           {shouldPulse && !editingName && (
                               <span className="relative flex h-2 w-2 ml-1">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -289,7 +296,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                             {/* Observations Section */}
                                             {loan.observation && (
                                                 <div className="px-4 py-2 bg-slate-800/20 border-b border-slate-700/30 flex items-start gap-2">
-                                                    <FileText size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                                                    <FileText size={14} className="text-emerald-400 mt-0.5 flex-shrink-0" />
                                                     <p className="text-xs text-slate-300 italic break-words">
                                                         "{loan.observation}"
                                                     </p>
@@ -384,6 +391,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                   totalProfit: 0,
                   overallStatus: 'Active',
                   hasOverdue: false,
+                  hasObservation: false,
                   earliestStartDate: client.startDate
               };
           }
@@ -401,6 +409,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           groups[key].totalReturn += totalReturn;
           groups[key].totalProfit += profit;
           if (isLate) groups[key].hasOverdue = true;
+          if (client.observation && client.observation.trim().length > 0) groups[key].hasObservation = true;
           
           // Update phone if missing in group but present in current
           if (!groups[key].phone && client.phone) groups[key].phone = client.phone;

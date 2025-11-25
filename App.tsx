@@ -37,7 +37,7 @@ const App: React.FC = () => {
         if (Array.isArray(parsed)) {
             return parsed.map((c: any) => ({
                 ...c,
-                status: c.status || 'Active',
+                status: (c.status as Client['status']) || 'Active',
                 lastUpdated: c.lastUpdated || Date.now(),
                 isDeleted: c.isDeleted || false
             }));
@@ -113,7 +113,7 @@ const App: React.FC = () => {
         if (client.isDeleted || client.status === 'Completed') return client;
 
         const isLate = client.installmentsList.some(inst => !inst.isPaid && new Date(inst.dueDate) < today);
-        const newStatus = isLate ? 'Late' : 'Active';
+        const newStatus: Client['status'] = isLate ? 'Late' : 'Active';
 
         if (client.status !== newStatus) {
           hasChanges = true;
