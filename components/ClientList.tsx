@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -9,32 +9,44 @@ interface ClientListProps {
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
 }
 
+interface GroupedClient {
+  name: string;
+  phone: string;
+  clients: Client[]; // Array of loans for this person
+  totalPrincipal: number;
+  totalReturn: number;
+  totalProfit: number;
+  overallStatus: 'Active' | 'Completed' | 'Late';
+  hasOverdue: boolean;
+  earliestStartDate: string;
+}
+
 interface ClientGroupProps {
   title: string;
-  clients: Client[];
+  groupedClients: GroupedClient[];
   colorTheme: 'red' | 'emerald' | 'blue';
   icon: React.ElementType;
-  expandedId: string | null;
-  onExpand: (id: string) => void;
+  expandedName: string | null;
+  onExpand: (name: string) => void;
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
 }
 
+// Helper to determine color of individual installments
 const getInstallmentStatusColor = (installment: Installment) => {
   if (installment.isPaid) return 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400';
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  // Robust Date Parsing
   const [y, m, d] = installment.dueDate.split('-').map(Number);
   const dueDate = new Date(y, m - 1, d);
   
   const diffTime = dueDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-  if (diffDays < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue (Vencido)
-  if (diffDays <= 1) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; // Due tomorrow or today (A vencer/Hoje)
+  if (diffDays < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue
+  if (diffDays <= 1) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; // Due soon
   
   return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
 };
@@ -58,9 +70,8 @@ const getStatusText = (installment: Installment) => {
   return 'ABERTO';
 }
 
-// Sub-component for rendering a table section
 const ClientGroupSection: React.FC<ClientGroupProps> = ({ 
-  title, clients, colorTheme, icon: Icon, expandedId, onExpand, onDelete, onTogglePayment 
+  title, groupedClients, colorTheme, icon: Icon, expandedName, onExpand, onDelete, onTogglePayment 
 }) => {
   
   const themeClasses = {
@@ -78,7 +89,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
         <Icon className={theme.text} size={20} />
         <h3 className={`font-bold uppercase text-sm ${theme.text} tracking-wider`}>{title}</h3>
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${theme.badge} border ${theme.border}`}>
-          {clients.length}
+          {groupedClients.length}
         </span>
       </div>
 
@@ -87,49 +98,41 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
           <thead className="bg-slate-900/50 text-slate-400 uppercase font-bold text-xs">
             <tr>
               <th className="px-6 py-3">Cliente</th>
-              <th className="px-6 py-3">Início</th>
-              <th className="px-6 py-3">Principal</th>
-              <th className="px-6 py-3">Progresso</th>
-              <th className="px-6 py-3">Retorno</th>
+              <th className="px-6 py-3">Contratos</th>
+              <th className="px-6 py-3">Total Principal</th>
+              <th className="px-6 py-3">Progresso Geral</th>
+              <th className="px-6 py-3">Retorno Total</th>
               <th className="px-6 py-3 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/50">
-            {clients.map((client) => {
-              const totalReturn = client.principal * (1 + client.interestRate / 100);
-              const dateFormatted = client.startDate.split('-').reverse().join('/');
-              const isExpanded = expandedId === client.id;
+            {groupedClients.map((group) => {
+              const isExpanded = expandedName === group.name;
               
-              const paidCount = client.installmentsList ? client.installmentsList.filter(i => i.isPaid).length : 0;
-              const progress = (paidCount / client.installments) * 100;
-              const totalProfit = totalReturn - client.principal;
-
-              // Check dynamically if client has any overdue installments
-              // This ensures visual sync even if status update is pending or if viewing in a different list
-              const hasOverdue = client.installmentsList?.some(i => {
-                  if (i.isPaid) return false;
-                  const [y, m, d] = i.dueDate.split('-').map(Number);
-                  const dueDate = new Date(y, m - 1, d);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  return dueDate < today;
+              // Calculate aggregated progress
+              let totalInstallments = 0;
+              let totalPaid = 0;
+              group.clients.forEach(c => {
+                  totalInstallments += c.installments;
+                  totalPaid += (c.installmentsList?.filter(i => i.isPaid).length || 0);
               });
+              const progress = totalInstallments > 0 ? (totalPaid / totalInstallments) * 100 : 0;
 
-              // Apply special highlighting for late clients (red theme) or dynamically detected overdue
-              const shouldPulse = isRedTheme || hasOverdue;
+              // Pulse if specifically in red theme or generally detected as overdue
+              const shouldPulse = isRedTheme || group.hasOverdue;
 
               const rowClass = shouldPulse 
                 ? `animate-pulse-red` 
                 : `${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'}`;
 
               return (
-                <React.Fragment key={client.id}>
+                <React.Fragment key={group.name}>
                   <tr className={`transition-colors border-b border-slate-700/50 ${rowClass}`}>
-                    <td className="px-6 py-4 cursor-pointer" onClick={() => onExpand(client.id)}>
+                    <td className="px-6 py-4 cursor-pointer" onClick={() => onExpand(group.name)}>
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex items-center gap-2">
                           <User size={14} className={shouldPulse ? "text-red-400" : "text-slate-400"}/> 
-                          {client.name}
+                          {group.name}
                           {shouldPulse && (
                               <span className="relative flex h-2 w-2 ml-1">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -137,51 +140,46 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                               </span>
                           )}
                         </span>
-                        {client.phone && (
+                        {group.phone && (
                           <span className="text-xs text-slate-500 flex items-center gap-2 mt-1">
-                            <Phone size={12} /> {client.phone}
+                            <Phone size={12} /> {group.phone}
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-400 font-mono text-xs">
-                      {dateFormatted}
+                    <td className="px-6 py-4">
+                       <span className="flex items-center gap-1 text-xs font-mono bg-slate-700/50 px-2 py-1 rounded text-slate-300 w-fit">
+                          <Layers size={12} /> {group.clients.length} {group.clients.length === 1 ? 'Empréstimo' : 'Empréstimos'}
+                       </span>
                     </td>
                     <td className="px-6 py-4 text-slate-300 font-mono">
-                      {formatCurrency(client.principal)}
+                      {formatCurrency(group.totalPrincipal)}
                     </td>
                     <td className="px-6 py-4">
                        <div className="flex items-center gap-2 w-24">
                           <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
                              <div className={`h-full transition-all duration-500 ${colorTheme === 'blue' ? 'bg-blue-500' : shouldPulse ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
                           </div>
-                          <span className="text-[10px] text-slate-500 font-mono">{paidCount}/{client.installments}</span>
+                          <span className="text-[10px] text-slate-500 font-mono">{totalPaid}/{totalInstallments}</span>
                        </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                           <span className="text-white font-bold font-mono text-xs">
-                              {formatCurrency(totalReturn)}
+                              {formatCurrency(group.totalReturn)}
                           </span>
                           <span className="text-[10px] text-slate-500">
-                              Lucro: +{client.interestRate.toFixed(1)}%
+                              Lucro Total: +{formatCurrency(group.totalProfit)}
                           </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button 
-                            onClick={() => onExpand(client.id)}
+                            onClick={() => onExpand(group.name)}
                             className="text-slate-500 hover:text-white p-1.5 rounded hover:bg-slate-700"
                         >
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                        <button 
-                          onClick={() => onDelete(client.id)}
-                          className="text-slate-600 hover:text-red-400 transition-colors p-1.5 rounded hover:bg-slate-700"
-                          title="Remover Cliente"
-                        >
-                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -190,59 +188,92 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                   {isExpanded && (
                       <tr className={`${shouldPulse ? 'bg-red-900/10' : 'bg-slate-900/40'} shadow-inner`}>
                           <td colSpan={6} className="p-4">
-                            <div className="bg-slate-900 rounded-xl p-4 border border-slate-700/50">
-                                <h4 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
-                                    <Calendar size={14} /> Cronograma de Pagamentos
-                                </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                    {client.installmentsList?.map((inst) => {
-                                        const statusColor = getInstallmentStatusColor(inst);
-                                        const statusText = getStatusText(inst);
-                                        const displayDate = inst.dueDate.split('-').reverse().join('/');
-
-                                        return (
-                                            <div key={inst.number} className={`border rounded-lg p-3 transition-all relative ${statusColor}`}>
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <span className="font-mono font-bold text-sm opacity-70">#{inst.number}</span>
-                                                    <div className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/20 uppercase">
-                                                        {statusText}
+                            {/* Render Each Loan Separately */}
+                            <div className="space-y-6">
+                                {group.clients.map((loan, idx) => {
+                                    const loanTotalReturn = loan.principal * (1 + loan.interestRate / 100);
+                                    const loanProfit = loanTotalReturn - loan.principal;
+                                    
+                                    return (
+                                        <div key={loan.id} className="bg-slate-900 rounded-xl border border-slate-700/50 overflow-hidden">
+                                            {/* Loan Header */}
+                                            <div className="bg-slate-800/50 px-4 py-3 border-b border-slate-700/50 flex flex-wrap justify-between items-center gap-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-slate-700 p-1.5 rounded text-slate-300 font-bold text-xs">
+                                                        #{idx + 1}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs text-slate-400">Data do Empréstimo</div>
+                                                        <div className="text-sm font-bold text-white flex items-center gap-1">
+                                                            <Calendar size={14} className="text-emerald-500" />
+                                                            {loan.startDate.split('-').reverse().join('/')}
+                                                        </div>
+                                                    </div>
+                                                    <div className="h-6 w-px bg-slate-700 mx-2"></div>
+                                                    <div>
+                                                        <div className="text-xs text-slate-400">Valor Tomado</div>
+                                                        <div className="text-sm font-bold text-white">{formatCurrency(loan.principal)}</div>
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="flex justify-between items-end">
-                                                    <div>
-                                                        <div className="text-[10px] opacity-60">Vencimento</div>
-                                                        <div className="font-mono text-xs">{displayDate}</div>
-                                                        <div className="font-bold text-base mt-0.5">{formatCurrency(inst.value)}</div>
+                                                <button 
+                                                    onClick={() => onDelete(loan.id)}
+                                                    className="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 hover:bg-slate-800 px-2 py-1 rounded transition-colors"
+                                                >
+                                                    <Trash2 size={14} /> Excluir este contrato
+                                                </button>
+                                            </div>
+
+                                            {/* Installments Grid */}
+                                            <div className="p-4">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                                    {loan.installmentsList?.map((inst) => {
+                                                        const statusColor = getInstallmentStatusColor(inst);
+                                                        const statusText = getStatusText(inst);
+                                                        const displayDate = inst.dueDate.split('-').reverse().join('/');
+
+                                                        return (
+                                                            <div key={inst.number} className={`border rounded-lg p-3 transition-all relative ${statusColor}`}>
+                                                                <div className="flex justify-between items-start mb-2">
+                                                                    <span className="font-mono font-bold text-sm opacity-70"> Parc. {inst.number}</span>
+                                                                    <div className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-black/20 uppercase">
+                                                                        {statusText}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div className="flex justify-between items-end">
+                                                                    <div>
+                                                                        <div className="text-[10px] opacity-60">Vencimento</div>
+                                                                        <div className="font-mono text-xs">{displayDate}</div>
+                                                                        <div className="font-bold text-base mt-0.5">{formatCurrency(inst.value)}</div>
+                                                                    </div>
+                                                                    <button 
+                                                                        onClick={() => onTogglePayment(loan.id, inst.number)}
+                                                                        className={`p-1.5 rounded-full transition-all ${inst.isPaid ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                                                                    >
+                                                                        <CheckCircle size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+
+                                                    {/* Loan Profit Summary */}
+                                                    <div className="border rounded-lg p-3 transition-all bg-purple-900/10 border-purple-500/20 text-purple-300 relative overflow-hidden flex flex-col justify-between">
+                                                        <div className="flex justify-between items-start">
+                                                            <span className="font-mono font-bold text-sm text-purple-500">RESUMO</span>
+                                                            <TrendingUp size={16} className="text-purple-500/50" />
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[10px] opacity-60 text-purple-400">Lucro do Contrato</div>
+                                                            <div className="font-bold text-base mt-0.5 text-purple-300">{formatCurrency(loanProfit)}</div>
+                                                        </div>
                                                     </div>
-                                                    <button 
-                                                        onClick={() => onTogglePayment(client.id, inst.number)}
-                                                        className={`p-1.5 rounded-full transition-all ${inst.isPaid ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}
-                                                    >
-                                                        <CheckCircle size={18} />
-                                                    </button>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-
-                                    {/* Profit Card */}
-                                    <div className="border rounded-lg p-3 transition-all bg-purple-900/10 border-purple-500/20 text-purple-300 relative overflow-hidden">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="font-mono font-bold text-sm text-purple-500">RESUMO</span>
-                                            <div className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 uppercase text-purple-300">
-                                                LUCRO
-                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-end mt-4">
-                                            <div>
-                                                <div className="text-[10px] opacity-60 text-purple-400">Total Ganho</div>
-                                                <div className="font-bold text-base mt-0.5 text-purple-300">{formatCurrency(totalProfit)}</div>
-                                            </div>
-                                            <TrendingUp size={18} className="text-purple-500/50" />
-                                        </div>
-                                    </div>
-                                </div>
+                                    );
+                                })}
                             </div>
                           </td>
                       </tr>
@@ -258,15 +289,72 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
 };
 
 export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment }) => {
-  const [expandedClientId, setExpandedClientId] = useState<string | null>(null);
+  const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
-  const toggleExpand = (id: string) => {
-    setExpandedClientId(expandedClientId === id ? null : id);
+  const toggleExpand = (name: string) => {
+    setExpandedClientName(expandedClientName === name ? null : name);
   };
 
-  const lateClients = clients.filter(c => c.status === 'Late');
-  const activeClients = clients.filter(c => c.status === 'Active');
-  const completedClients = clients.filter(c => c.status === 'Completed');
+  // Group clients by Name
+  const groupedClients = useMemo(() => {
+      const groups: Record<string, GroupedClient> = {};
+
+      clients.forEach(client => {
+          const key = client.name.trim(); // Normalize name
+          
+          if (!groups[key]) {
+              groups[key] = {
+                  name: key,
+                  phone: client.phone,
+                  clients: [],
+                  totalPrincipal: 0,
+                  totalReturn: 0,
+                  totalProfit: 0,
+                  overallStatus: 'Active',
+                  hasOverdue: false,
+                  earliestStartDate: client.startDate
+              };
+          }
+
+          const totalReturn = client.principal * (1 + client.interestRate / 100);
+          const profit = totalReturn - client.principal;
+
+          // Check for overdue
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          const isLate = client.installmentsList.some(i => !i.isPaid && new Date(i.dueDate) < today);
+
+          groups[key].clients.push(client);
+          groups[key].totalPrincipal += client.principal;
+          groups[key].totalReturn += totalReturn;
+          groups[key].totalProfit += profit;
+          if (isLate) groups[key].hasOverdue = true;
+          
+          // Update phone if missing in group but present in current
+          if (!groups[key].phone && client.phone) groups[key].phone = client.phone;
+          
+          // Keep earliest date
+          if (new Date(client.startDate) < new Date(groups[key].earliestStartDate)) {
+              groups[key].earliestStartDate = client.startDate;
+          }
+      });
+
+      // Determine overall status for the group
+      Object.values(groups).forEach(group => {
+          if (group.hasOverdue) {
+              group.overallStatus = 'Late';
+          } else {
+              const allCompleted = group.clients.every(c => c.status === 'Completed');
+              group.overallStatus = allCompleted ? 'Completed' : 'Active';
+          }
+      });
+
+      return Object.values(groups);
+  }, [clients]);
+
+  const lateGroups = groupedClients.filter(g => g.overallStatus === 'Late');
+  const activeGroups = groupedClients.filter(g => g.overallStatus === 'Active');
+  const completedGroups = groupedClients.filter(g => g.overallStatus === 'Completed');
 
   if (clients.length === 0) {
     return (
@@ -278,39 +366,39 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
 
   return (
     <div className="space-y-2">
-      {lateClients.length > 0 && (
+      {lateGroups.length > 0 && (
         <ClientGroupSection 
           title="Atenção Necessária (Atrasados)" 
-          clients={lateClients} 
+          groupedClients={lateGroups} 
           colorTheme="red" 
           icon={AlertTriangle}
-          expandedId={expandedClientId}
+          expandedName={expandedClientName}
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
         />
       )}
 
-      {activeClients.length > 0 && (
+      {activeGroups.length > 0 && (
         <ClientGroupSection 
           title="Carteira Ativa (Em Dia)" 
-          clients={activeClients} 
+          groupedClients={activeGroups} 
           colorTheme="emerald" 
           icon={ShieldCheck}
-          expandedId={expandedClientId}
+          expandedName={expandedClientName}
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
         />
       )}
 
-      {completedClients.length > 0 && (
+      {completedGroups.length > 0 && (
         <ClientGroupSection 
           title="Histórico (Finalizados)" 
-          clients={completedClients} 
+          groupedClients={completedGroups} 
           colorTheme="blue" 
           icon={CheckSquare}
-          expandedId={expandedClientId}
+          expandedName={expandedClientName}
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
