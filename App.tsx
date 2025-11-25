@@ -169,10 +169,30 @@ const App: React.FC = () => {
 
   const handleCloudConfigSubmit = () => {
     try {
-        const config = JSON.parse(configInput);
+        let cleaned = configInput.trim();
+        
+        // Remove variable declaration (const firebaseConfig =) if present
+        if (cleaned.includes('=')) {
+            const parts = cleaned.split('=');
+            if (parts.length > 1) {
+                cleaned = parts[1].trim();
+            }
+        }
+        
+        // Remove trailing semicolon
+        if (cleaned.endsWith(';')) cleaned = cleaned.slice(0, -1);
+        
+        // Attempt to fix unquoted keys (JavaScript object syntax to JSON)
+        // This regex finds keys that are not quoted and adds quotes
+        // Example: apiKey: "..." -> "apiKey": "..."
+        const jsonString = cleaned.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+
+        const config = JSON.parse(jsonString);
+        
         localStorage.setItem('firebaseConfig', JSON.stringify(config));
         setCloudConfig(config);
         setShowCloudModal(false);
+        
         // Attempt to sync current local data to cloud immediately upon connection
         if (activeClients.length > 0) {
              setTimeout(() => {
@@ -180,7 +200,8 @@ const App: React.FC = () => {
              }, 1000);
         }
     } catch (e) {
-        alert("JSON inválido. Verifique suas credenciais.");
+        console.error(e);
+        alert("Não foi possível ler o código. Certifique-se de copiar o trecho completo que começa com '{' e termina com '}'.");
     }
   };
 
@@ -416,12 +437,12 @@ const App: React.FC = () => {
                 {!isCloudConnected ? (
                     <>
                         <p className="text-slate-400 text-sm mb-4">
-                            Cole o JSON de configuração do seu projeto Firebase para ativar a sincronização em tempo real entre dispositivos.
+                            Cole o código do Firebase <b>exatamente como copiou do site</b> (com 'const config = ...' ou apenas as chaves). O sistema ajusta automaticamente.
                         </p>
                         <textarea
                             value={configInput}
                             onChange={(e) => setConfigInput(e.target.value)}
-                            placeholder='{"apiKey": "...", "authDomain": "..."}'
+                            placeholder='Cole o código aqui...'
                             className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono mb-4 focus:outline-none focus:border-blue-500"
                         />
                         <button 
