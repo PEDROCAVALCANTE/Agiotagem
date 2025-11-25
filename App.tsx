@@ -248,6 +248,27 @@ const App: React.FC = () => {
     setShowForm(false);
   };
 
+  const handleEditClientName = (oldName: string, newName: string) => {
+      if (!newName.trim() || oldName === newName) return;
+      
+      const timestamp = Date.now();
+      const clientsToUpdate: Client[] = [];
+
+      setClients(prev => prev.map(c => {
+          if (c.name === oldName) {
+              const updated = { ...c, name: newName, lastUpdated: timestamp };
+              clientsToUpdate.push(updated);
+              return updated;
+          }
+          return c;
+      }));
+
+      // Cloud Sync for all affected clients
+      if (isCloudConnected && clientsToUpdate.length > 0) {
+          clientsToUpdate.forEach(c => saveClientToCloud(c));
+      }
+  };
+
   const handleDeleteClient = (id: string) => {
     if (window.confirm('Tem certeza que deseja remover este cliente?')) {
       const timestamp = Date.now();
@@ -469,6 +490,7 @@ const App: React.FC = () => {
           clients={activeClients} 
           onDelete={handleDeleteClient}
           onTogglePayment={handleTogglePayment}
+          onEditName={handleEditClientName}
         />
       </main>
 

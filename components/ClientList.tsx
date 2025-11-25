@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers, Pencil, Check, X } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
+  onEditName: (oldName: string, newName: string) => void;
 }
 
 interface GroupedClient {
@@ -30,6 +31,7 @@ interface ClientGroupProps {
   onExpand: (name: string) => void;
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
+  onEditName: (oldName: string, newName: string) => void;
 }
 
 // Helper to determine color of individual installments
@@ -71,8 +73,10 @@ const getStatusText = (installment: Installment) => {
 }
 
 const ClientGroupSection: React.FC<ClientGroupProps> = ({ 
-  title, groupedClients, colorTheme, icon: Icon, expandedName, onExpand, onDelete, onTogglePayment 
+  title, groupedClients, colorTheme, icon: Icon, expandedName, onExpand, onDelete, onTogglePayment, onEditName 
 }) => {
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [tempName, setTempName] = useState('');
   
   const themeClasses = {
     red: { border: 'border-red-500/30', bg: 'bg-red-500/5', text: 'text-red-400', badge: 'bg-red-500/20 text-red-300' },
@@ -82,6 +86,23 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
 
   const theme = themeClasses[colorTheme];
   const isRedTheme = colorTheme === 'red';
+
+  const startEditing = (e: React.MouseEvent, name: string) => {
+      e.stopPropagation();
+      setEditingName(name);
+      setTempName(name);
+  };
+
+  const saveName = (e: React.MouseEvent, oldName: string) => {
+      e.stopPropagation();
+      onEditName(oldName, tempName);
+      setEditingName(null);
+  };
+
+  const cancelEditing = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setEditingName(null);
+  };
 
   return (
     <div className={`rounded-xl border ${theme.border} overflow-hidden mb-6 shadow-lg`}>
@@ -130,10 +151,39 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                   <tr className={`transition-colors border-b border-slate-700/50 ${rowClass}`}>
                     <td className="px-6 py-4 cursor-pointer" onClick={() => onExpand(group.name)}>
                       <div className="flex flex-col">
-                        <span className="font-medium text-white flex items-center gap-2">
+                        <span className="font-medium text-white flex items-center gap-2 group">
                           <User size={14} className={shouldPulse ? "text-red-400" : "text-slate-400"}/> 
-                          {group.name}
-                          {shouldPulse && (
+                          
+                          {editingName === group.name ? (
+                              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                  <input 
+                                      type="text" 
+                                      value={tempName}
+                                      onChange={(e) => setTempName(e.target.value)}
+                                      className="bg-slate-900 border border-emerald-500 rounded px-2 py-0.5 text-white text-sm focus:outline-none w-32 md:w-48"
+                                      autoFocus
+                                  />
+                                  <button onClick={(e) => saveName(e, group.name)} className="text-emerald-400 hover:bg-emerald-500/20 p-1 rounded">
+                                      <Check size={14} />
+                                  </button>
+                                  <button onClick={cancelEditing} className="text-red-400 hover:bg-red-500/20 p-1 rounded">
+                                      <X size={14} />
+                                  </button>
+                              </div>
+                          ) : (
+                              <>
+                                {group.name}
+                                <button 
+                                  onClick={(e) => startEditing(e, group.name)}
+                                  className="text-slate-600 hover:text-emerald-400 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                                  title="Editar nome"
+                                >
+                                    <Pencil size={12} />
+                                </button>
+                              </>
+                          )}
+
+                          {shouldPulse && !editingName && (
                               <span className="relative flex h-2 w-2 ml-1">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
@@ -288,7 +338,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
   );
 };
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onEditName }) => {
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
   const toggleExpand = (name: string) => {
@@ -376,6 +426,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
+          onEditName={onEditName}
         />
       )}
 
@@ -389,6 +440,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
+          onEditName={onEditName}
         />
       )}
 
@@ -402,6 +454,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onExpand={toggleExpand}
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
+          onEditName={onEditName}
         />
       )}
     </div>
