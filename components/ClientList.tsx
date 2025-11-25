@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers, Pencil, Check, X, FileText } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers, Pencil, Check, X, FileText, StickyNote } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -293,16 +293,6 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                                 </div>
                                             </div>
 
-                                            {/* Observations Section */}
-                                            {loan.observation && (
-                                                <div className="px-4 py-2 bg-slate-800/20 border-b border-slate-700/30 flex items-start gap-2">
-                                                    <FileText size={14} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-                                                    <p className="text-xs text-slate-300 italic break-words">
-                                                        "{loan.observation}"
-                                                    </p>
-                                                </div>
-                                            )}
-
                                             {/* Installments Grid */}
                                             <div className="p-4">
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -348,6 +338,21 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                                             <div className="font-bold text-base mt-0.5 text-purple-300">{formatCurrency(loanProfit)}</div>
                                                         </div>
                                                     </div>
+
+                                                    {/* NEW: Annotation/Observation Card */}
+                                                    {loan.observation && (
+                                                      <div className="border rounded-lg p-3 transition-all bg-blue-900/10 border-blue-500/20 text-blue-300 relative overflow-hidden flex flex-col justify-between col-span-1 md:col-span-2 lg:col-span-1">
+                                                          <div className="flex justify-between items-start mb-1">
+                                                              <span className="font-mono font-bold text-sm text-blue-500">ANOTAÇÃO</span>
+                                                              <StickyNote size={16} className="text-blue-500/50" />
+                                                          </div>
+                                                          <div className="max-h-[60px] overflow-y-auto pr-1 custom-scrollbar">
+                                                              <p className="text-xs text-slate-300 italic break-words leading-relaxed">
+                                                                  "{loan.observation}"
+                                                              </p>
+                                                          </div>
+                                                      </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
