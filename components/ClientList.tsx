@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers, Pencil, Check, X } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, AlertTriangle, CheckSquare, ShieldCheck, Layers, Pencil, Check, X, FileText } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -284,6 +285,16 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                                     </button>
                                                 </div>
                                             </div>
+
+                                            {/* Observations Section */}
+                                            {loan.observation && (
+                                                <div className="px-4 py-2 bg-slate-800/20 border-b border-slate-700/30 flex items-start gap-2">
+                                                    <FileText size={14} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                                                    <p className="text-xs text-slate-300 italic break-words">
+                                                        "{loan.observation}"
+                                                    </p>
+                                                </div>
+                                            )}
 
                                             {/* Installments Grid */}
                                             <div className="p-4">

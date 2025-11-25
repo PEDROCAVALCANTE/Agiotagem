@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { generateId, formatCurrency } from '../constants';
-import { Plus, Save, X, Calculator, Pencil } from 'lucide-react';
+import { Plus, Save, X, Calculator, Pencil, FileText } from 'lucide-react';
 
 interface ClientFormProps {
   onSave: (client: Client) => void;
@@ -16,6 +17,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onSave, onCancel, initia
   const [phone, setPhone] = useState('');
   const [installmentValue, setInstallmentValue] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [observation, setObservation] = useState('');
 
   // Load initial data if editing
   useEffect(() => {
@@ -25,6 +27,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onSave, onCancel, initia
         setAmount(initialData.principal.toString());
         setInstallments(initialData.installments.toString());
         setStartDate(initialData.startDate);
+        setObservation(initialData.observation || '');
         
         // Try to get installment value from the first installment
         if (initialData.installmentsList && initialData.installmentsList.length > 0) {
@@ -103,6 +106,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onSave, onCancel, initia
       startDate: startDate,
       status: initialData ? initialData.status : 'Active', // Preserve status logic handles updates elsewhere
       installmentsList: generatedInstallments,
+      observation: observation,
       isDeleted: false,
       lastUpdated: Date.now()
     };
@@ -200,6 +204,20 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onSave, onCancel, initia
               required
             />
           </div>
+        </div>
+
+        {/* Observation Field */}
+        <div className="md:col-span-2 lg:col-span-3">
+          <label className="block text-xs text-slate-400 mb-1 uppercase font-bold flex items-center gap-1">
+             <FileText size={12} /> Observações
+          </label>
+          <textarea 
+            value={observation}
+            onChange={(e) => setObservation(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500 min-h-[80px]"
+            placeholder="Ex: Pagamento sempre dia 5; Cliente prefere contato via WhatsApp..."
+            maxLength={500}
+          />
         </div>
 
         {/* Live Calculation Preview */}
