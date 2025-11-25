@@ -55,6 +55,7 @@ const App: React.FC = () => {
   }, [clients]);
 
   const [showForm, setShowForm] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   
   // Refs
@@ -236,16 +237,22 @@ const App: React.FC = () => {
     window.location.reload(); // Force reload to clear connections
   };
 
-  const handleAddClient = (newClient: Client) => {
+  const handleSaveClient = (clientToSave: Client) => {
     setClients(prev => {
-        const updated = [...prev, newClient];
-        return updated;
+        // If it's an update, replace the existing one
+        const exists = prev.find(c => c.id === clientToSave.id);
+        if (exists) {
+            return prev.map(c => c.id === clientToSave.id ? clientToSave : c);
+        }
+        // If new, add it
+        return [...prev, clientToSave];
     });
     // Cloud Sync
     if (isCloudConnected) {
-        saveClientToCloud(newClient);
+        saveClientToCloud(clientToSave);
     }
     setShowForm(false);
+    setEditingClient(null);
   };
 
   const handleEditClientName = (oldName: string, newName: string) => {
@@ -267,6 +274,13 @@ const App: React.FC = () => {
       if (isCloudConnected && clientsToUpdate.length > 0) {
           clientsToUpdate.forEach(c => saveClientToCloud(c));
       }
+  };
+
+  const handleEditLoan = (client: Client) => {
+      setEditingClient(client);
+      setShowForm(true);
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteClient = (id: string) => {
@@ -382,7 +396,10 @@ const App: React.FC = () => {
             </div>
 
             <button 
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                  setEditingClient(null);
+                  setShowForm(!showForm);
+              }}
               className="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
             >
               <Plus size={24} />
@@ -477,7 +494,14 @@ const App: React.FC = () => {
 
         {/* Client Form */}
         {showForm && (
-          <ClientForm onAddClient={handleAddClient} onCancel={() => setShowForm(false)} />
+          <ClientForm 
+            onSave={handleSaveClient} 
+            onCancel={() => {
+                setShowForm(false);
+                setEditingClient(null);
+            }} 
+            initialData={editingClient}
+          />
         )}
 
         {/* Client List Header */}
@@ -491,6 +515,7 @@ const App: React.FC = () => {
           onDelete={handleDeleteClient}
           onTogglePayment={handleTogglePayment}
           onEditName={handleEditClientName}
+          onEditLoan={handleEditLoan}
         />
       </main>
 

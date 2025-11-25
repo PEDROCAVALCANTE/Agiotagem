@@ -8,6 +8,7 @@ interface ClientListProps {
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
   onEditName: (oldName: string, newName: string) => void;
+  onEditLoan: (client: Client) => void;
 }
 
 interface GroupedClient {
@@ -32,6 +33,7 @@ interface ClientGroupProps {
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
   onEditName: (oldName: string, newName: string) => void;
+  onEditLoan: (client: Client) => void;
 }
 
 // Helper to determine color of individual installments
@@ -73,7 +75,7 @@ const getStatusText = (installment: Installment) => {
 }
 
 const ClientGroupSection: React.FC<ClientGroupProps> = ({ 
-  title, groupedClients, colorTheme, icon: Icon, expandedName, onExpand, onDelete, onTogglePayment, onEditName 
+  title, groupedClients, colorTheme, icon: Icon, expandedName, onExpand, onDelete, onTogglePayment, onEditName, onEditLoan
 }) => {
   const [editingName, setEditingName] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
@@ -266,12 +268,21 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
                                                     </div>
                                                 </div>
                                                 
-                                                <button 
-                                                    onClick={() => onDelete(loan.id)}
-                                                    className="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 hover:bg-slate-800 px-2 py-1 rounded transition-colors"
-                                                >
-                                                    <Trash2 size={14} /> Excluir este contrato
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button 
+                                                        onClick={() => onEditLoan(loan)}
+                                                        className="text-slate-500 hover:text-blue-400 text-xs flex items-center gap-1 hover:bg-slate-800 px-2 py-1 rounded transition-colors"
+                                                    >
+                                                        <Pencil size={14} /> Editar
+                                                    </button>
+                                                    <div className="h-4 w-px bg-slate-700"></div>
+                                                    <button 
+                                                        onClick={() => onDelete(loan.id)}
+                                                        className="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 hover:bg-slate-800 px-2 py-1 rounded transition-colors"
+                                                    >
+                                                        <Trash2 size={14} /> Excluir
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             {/* Installments Grid */}
@@ -338,7 +349,7 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
   );
 };
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onEditName }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onEditName, onEditLoan }) => {
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
   const toggleExpand = (name: string) => {
@@ -427,6 +438,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
           onEditName={onEditName}
+          onEditLoan={onEditLoan}
         />
       )}
 
@@ -441,6 +453,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
           onEditName={onEditName}
+          onEditLoan={onEditLoan}
         />
       )}
 
@@ -455,6 +468,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           onDelete={onDelete}
           onTogglePayment={onTogglePayment}
           onEditName={onEditName}
+          onEditLoan={onEditLoan}
         />
       )}
     </div>

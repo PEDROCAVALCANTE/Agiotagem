@@ -1,20 +1,37 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { generateId, formatCurrency } from '../constants';
-import { Plus, Save, X, Calculator } from 'lucide-react';
+import { Plus, Save, X, Calculator, Pencil } from 'lucide-react';
 
 interface ClientFormProps {
-  onAddClient: (client: Client) => void;
+  onSave: (client: Client) => void;
   onCancel: () => void;
+  initialData?: Client | null;
 }
 
-export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel }) => {
+export const ClientForm: React.FC<ClientFormProps> = ({ onSave, onCancel, initialData }) => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [installments, setInstallments] = useState('');
   const [phone, setPhone] = useState('');
   const [installmentValue, setInstallmentValue] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Load initial data if editing
+  useEffect(() => {
+    if (initialData) {
+        setName(initialData.name);
+        setPhone(initialData.phone);
+        setAmount(initialData.principal.toString());
+        setInstallments(initialData.installments.toString());
+        setStartDate(initialData.startDate);
+        
+        // Try to get installment value from the first installment
+        if (initialData.installmentsList && initialData.installmentsList.length > 0) {
+            setInstallmentValue(initialData.installmentsList[0].value.toString());
+        }
+    }
+  }, [initialData]);
 
   // Real-time calculations
   const calculationStats = useMemo(() => {
@@ -59,36 +76,46 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel })
         // Assuming 1 month gap between installments
         dueDate.setMonth(initialDate.getMonth() + i);
         
+        // If editing, try to preserve the 'isPaid' status if the installment number exists
+        let isPaid = false;
+        if (initialData && initialData.installmentsList) {
+            const existing = initialData.installmentsList.find(x => x.number === i);
+            if (existing) {
+                isPaid = existing.isPaid;
+            }
+        }
+        
         generatedInstallments.push({
             number: i,
             dueDate: dueDate.toISOString().split('T')[0],
             value: valParcela,
-            isPaid: false
+            isPaid: isPaid
         });
     }
 
-    const newClient: Client = {
-      id: generateId(),
+    const clientToSave: Client = {
+      id: initialData ? initialData.id : generateId(), // Preserve ID if editing
       name,
       phone,
       principal,
       installments: inst,
       interestRate: calculatedRate, // Storing the derived rate
       startDate: startDate,
-      status: 'Active',
+      status: initialData ? initialData.status : 'Active', // Preserve status logic handles updates elsewhere
       installmentsList: generatedInstallments,
       isDeleted: false,
       lastUpdated: Date.now()
     };
 
-    onAddClient(newClient);
+    onSave(clientToSave);
   };
 
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-8 shadow-lg animate-fade-in">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
-          <Plus size={20} className="text-emerald-400" /> Novo Cliente
+          {initialData ? <Pencil size={20} className="text-blue-400" /> : <Plus size={20} className="text-emerald-400" />} 
+          {initialData ? 'Editar Contrato' : 'Novo Cliente'}
         </h3>
         <button onClick={onCancel} className="text-slate-400 hover:text-white">
           <X size={20} />
@@ -208,7 +235,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel })
                     type="submit" 
                     className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-6 rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-emerald-900/20"
                 >
-                    <Save size={18} /> Registrar
+                    <Save size={18} /> {initialData ? 'Atualizar' : 'Registrar'}
                 </button>
             </div>
         </div>
