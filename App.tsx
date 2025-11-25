@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, FinancialSummary } from './types';
 import { calculateProgression, formatCurrency } from './constants';
-import { analyzePortfolio } from './services/aiService';
 import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save } from 'lucide-react';
+import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone } from 'lucide-react';
 
 // Hardcoded configuration provided by the user
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
@@ -57,8 +56,6 @@ const App: React.FC = () => {
 
   const [showForm, setShowForm] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string>('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Refs
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -82,11 +79,6 @@ const App: React.FC = () => {
                 }));
             });
         });
-        
-        // If we just connected and have local clients but no cloud clients (or we want to sync up),
-        // we might want to push local to cloud. 
-        // For safety in this "auto-connect" version, let's just listen.
-        // But if the user explicitly saves something, it goes to cloud.
         
         return () => unsubscribe();
       }
@@ -157,6 +149,23 @@ const App: React.FC = () => {
       });
     });
     return alerts;
+  }, [activeClients]);
+
+  // Overdue Clients Summary for the Dashboard Widget
+  const overdueClientsSummary = useMemo(() => {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      return activeClients.map(client => {
+          const overdueInstallments = client.installmentsList.filter(i => !i.isPaid && new Date(i.dueDate) < today);
+          const totalOverdue = overdueInstallments.reduce((acc, curr) => acc + curr.value, 0);
+          
+          return {
+              ...client,
+              totalOverdue,
+              overdueCount: overdueInstallments.length
+          };
+      }).filter(c => c.totalOverdue > 0);
   }, [activeClients]);
 
   const progressionData = useMemo(() => calculateProgression(activeClients), [activeClients]);
@@ -287,13 +296,6 @@ const App: React.FC = () => {
     }
   };
 
-  const generateReport = async () => {
-    setIsAnalyzing(true);
-    const analysis = await analyzePortfolio(activeClients);
-    setAiInsight(analysis);
-    setIsAnalyzing(false);
-  };
-
   return (
     <div className="min-h-screen pb-10">
       <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
@@ -373,46 +375,67 @@ const App: React.FC = () => {
         {/* Dashboard KPIs */}
         <DashboardCards summary={financialSummary} />
 
-        {/* AI Analysis Section */}
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-                <BrainCircuit size={120} className="text-purple-500" />
-            </div>
+        {/* OVERDUE CLIENTS SECTION (Replaced AI Analysis) */}
+        <div className={`bg-slate-800 border ${overdueClientsSummary.length > 0 ? 'border-red-900/50' : 'border-slate-700'} rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden transition-all duration-300`}>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 relative z-10">
                 <div className="flex items-center gap-3 mb-4 md:mb-0">
-                    <div className="bg-purple-500/20 p-2 rounded-lg">
-                        <BrainCircuit className="text-purple-400" size={24} />
+                    <div className={`${overdueClientsSummary.length > 0 ? 'bg-red-500/20 animate-pulse' : 'bg-emerald-500/20'} p-2 rounded-lg`}>
+                        {overdueClientsSummary.length > 0 ? <AlertTriangle className="text-red-400" size={24} /> : <CheckCircle2 className="text-emerald-400" size={24} />}
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-white">Análise Inteligente</h2>
-                        <p className="text-slate-400 text-xs">Powered by Gemini AI</p>
+                        <h2 className={`text-xl font-bold ${overdueClientsSummary.length > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {overdueClientsSummary.length > 0 ? 'Cobrança Imediata' : 'Tudo em Dia'}
+                        </h2>
+                        <p className="text-slate-400 text-xs">
+                            {overdueClientsSummary.length > 0 ? 'Clientes com parcelas vencidas detectados' : 'Nenhuma pendência urgente encontrada'}
+                        </p>
                     </div>
                 </div>
-                <button 
-                    onClick={generateReport}
-                    disabled={isAnalyzing}
-                    className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isAnalyzing ? <Loader2 className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
-                    Gerar Relatório
-                </button>
             </div>
 
-            {aiInsight ? (
-                <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50 text-slate-300 text-sm leading-relaxed whitespace-pre-line animate-fade-in relative z-10">
-                    {aiInsight}
+            {overdueClientsSummary.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+                    {overdueClientsSummary.map(client => {
+                        const cleanPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
+                        const whatsappLink = cleanPhone ? `https://wa.me/55${cleanPhone}?text=Olá ${client.name}, temos parcelas vencidas no valor de ${formatCurrency(client.totalOverdue)}. Podemos negociar?` : '#';
+
+                        return (
+                            <div key={client.id} className="bg-red-900/10 border border-red-500/20 rounded-lg p-4 flex justify-between items-center group hover:bg-red-900/20 transition-colors">
+                                <div>
+                                    <h4 className="font-bold text-white">{client.name}</h4>
+                                    <p className="text-xs text-red-300 font-mono mt-1">
+                                        Total Vencido: <span className="font-bold text-lg block">{formatCurrency(client.totalOverdue)}</span>
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 mt-1">{client.overdueCount} parcela(s) em atraso</p>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                     {client.phone && (
+                                         <a 
+                                            href={whatsappLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-full transition-all shadow-lg shadow-green-900/30 flex items-center justify-center"
+                                            title="Cobrar no WhatsApp"
+                                         >
+                                            <MessageCircle size={18} />
+                                         </a>
+                                     )}
+                                     {client.phone && (
+                                        <a href={`tel:${cleanPhone}`} className="bg-slate-700 hover:bg-slate-600 text-slate-300 p-2 rounded-full transition-all flex items-center justify-center">
+                                            <Phone size={16} />
+                                        </a>
+                                     )}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             ) : (
-                <div className="bg-slate-900/30 rounded-lg p-8 border border-slate-700/30 text-center relative z-10">
-                    <p className="text-slate-500">Clique em "Gerar Relatório" para receber uma análise da sua carteira de clientes usando Gemini AI.</p>
+                <div className="bg-emerald-900/10 border border-emerald-500/10 rounded-lg p-6 text-center relative z-10">
+                    <p className="text-emerald-300 font-medium">Parabéns! Sua carteira de clientes está saudável.</p>
                 </div>
             )}
-
-            <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center gap-2 text-xs text-slate-500 relative z-10">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                ROI Médio da Carteira: <span className="text-emerald-400 font-bold">{financialSummary.averageRoi.toFixed(1)}%</span>
-            </div>
         </div>
 
         {/* Chart Section */}
