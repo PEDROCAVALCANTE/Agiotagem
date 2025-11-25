@@ -6,7 +6,7 @@ import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone } from 'lucide-react';
+import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone, ArrowRight } from 'lucide-react';
 
 // Hardcoded configuration provided by the user
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
@@ -375,7 +375,7 @@ const App: React.FC = () => {
         {/* Dashboard KPIs */}
         <DashboardCards summary={financialSummary} />
 
-        {/* OVERDUE CLIENTS SECTION (Replaced AI Analysis) */}
+        {/* OVERDUE CLIENTS SECTION */}
         <div className={`bg-slate-800 border ${overdueClientsSummary.length > 0 ? 'border-red-900/50' : 'border-slate-700'} rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden transition-all duration-300`}>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 relative z-10">
@@ -398,35 +398,48 @@ const App: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
                     {overdueClientsSummary.map(client => {
                         const cleanPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
-                        const whatsappLink = cleanPhone ? `https://wa.me/55${cleanPhone}?text=Olá ${client.name}, temos parcelas vencidas no valor de ${formatCurrency(client.totalOverdue)}. Podemos negociar?` : '#';
+                        const fullPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+                        
+                        // WhatsApp Message Formatting
+                        const message = `Olá *${client.name}*, tudo bem? 👋\n\nIdentificamos pendências no valor total de *${formatCurrency(client.totalOverdue)}* no nosso sistema.\n\nPodemos conversar para regularizar?`;
+                        const encodedMessage = encodeURIComponent(message);
+                        
+                        const whatsappLink = cleanPhone ? `https://wa.me/${fullPhone}?text=${encodedMessage}` : '#';
 
                         return (
-                            <div key={client.id} className="bg-red-900/10 border border-red-500/20 rounded-lg p-4 flex justify-between items-center group hover:bg-red-900/20 transition-colors">
-                                <div>
-                                    <h4 className="font-bold text-white">{client.name}</h4>
-                                    <p className="text-xs text-red-300 font-mono mt-1">
-                                        Total Vencido: <span className="font-bold text-lg block">{formatCurrency(client.totalOverdue)}</span>
-                                    </p>
-                                    <p className="text-[10px] text-slate-400 mt-1">{client.overdueCount} parcela(s) em atraso</p>
+                            <div key={client.id} className="bg-red-900/10 border border-red-500/20 rounded-xl p-5 flex flex-col justify-between group hover:bg-red-900/15 transition-colors shadow-sm">
+                                <div className="mb-4">
+                                    <div className="flex justify-between items-start">
+                                        <h4 className="font-bold text-white text-lg">{client.name}</h4>
+                                        <div className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">
+                                            Atrasado
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 bg-red-950/30 p-3 rounded-lg border border-red-500/10">
+                                        <p className="text-xs text-slate-400 mb-1">Total Vencido</p>
+                                        <p className="text-2xl font-bold text-red-400">{formatCurrency(client.totalOverdue)}</p>
+                                        <p className="text-[10px] text-red-300/70 mt-1 flex items-center gap-1">
+                                            <AlertTriangle size={10} /> {client.overdueCount} parcela(s) vencida(s)
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                     {client.phone && (
-                                         <a 
-                                            href={whatsappLink}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="bg-green-600 hover:bg-green-500 text-white p-2 rounded-full transition-all shadow-lg shadow-green-900/30 flex items-center justify-center"
-                                            title="Cobrar no WhatsApp"
-                                         >
-                                            <MessageCircle size={18} />
-                                         </a>
-                                     )}
-                                     {client.phone && (
-                                        <a href={`tel:${cleanPhone}`} className="bg-slate-700 hover:bg-slate-600 text-slate-300 p-2 rounded-full transition-all flex items-center justify-center">
-                                            <Phone size={16} />
-                                        </a>
-                                     )}
-                                </div>
+                                
+                                {client.phone ? (
+                                    <a 
+                                    href={whatsappLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40"
+                                    title="Enviar mensagem no WhatsApp"
+                                    >
+                                        <MessageCircle size={18} />
+                                        <span>Cobrar via WhatsApp</span>
+                                    </a>
+                                ) : (
+                                    <button disabled className="w-full bg-slate-700 text-slate-500 font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed">
+                                        <Phone size={18} /> Sem Telefone
+                                    </button>
+                                )}
                             </div>
                         );
                     })}
