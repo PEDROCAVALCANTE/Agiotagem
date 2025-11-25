@@ -6,7 +6,7 @@ import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone, ArrowRight, Check } from 'lucide-react';
 
 // Hardcoded configuration provided by the user
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
@@ -28,6 +28,9 @@ const App: React.FC = () => {
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [configInput, setConfigInput] = useState('');
+  
+  // Feedback Toast State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('clients');
@@ -60,6 +63,12 @@ const App: React.FC = () => {
   
   // Refs
   const notificationRef = useRef<HTMLDivElement>(null);
+
+  // Helper to show toast
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Initialize Cloud on Mount
   useEffect(() => {
@@ -217,6 +226,7 @@ const App: React.FC = () => {
         localStorage.setItem('firebaseConfig', JSON.stringify(config));
         setCloudConfig(config);
         setShowCloudModal(false);
+        showToast("Nuvem conectada com sucesso!");
         
         // Attempt to sync current local data to cloud immediately upon connection
         if (activeClients.length > 0) {
@@ -234,7 +244,8 @@ const App: React.FC = () => {
     localStorage.removeItem('firebaseConfig');
     setCloudConfig(null);
     setIsCloudConnected(false);
-    window.location.reload(); // Force reload to clear connections
+    showToast("Desconectado da nuvem.");
+    setTimeout(() => window.location.reload(), 1000); // Force reload to clear connections
   };
 
   const handleSaveClient = (clientToSave: Client) => {
@@ -253,6 +264,7 @@ const App: React.FC = () => {
     }
     setShowForm(false);
     setEditingClient(null);
+    showToast(editingClient ? "Contrato atualizado!" : "Novo cliente registrado!");
   };
 
   const handleEditClientName = (oldName: string, newName: string) => {
@@ -274,6 +286,7 @@ const App: React.FC = () => {
       if (isCloudConnected && clientsToUpdate.length > 0) {
           clientsToUpdate.forEach(c => saveClientToCloud(c));
       }
+      showToast("Nome do cliente atualizado.");
   };
 
   const handleEditLoan = (client: Client) => {
@@ -299,6 +312,7 @@ const App: React.FC = () => {
       if (isCloudConnected && deletedClient) {
         saveClientToCloud(deletedClient);
       }
+      showToast("Cliente removido da carteira.");
     }
   };
 
@@ -518,6 +532,18 @@ const App: React.FC = () => {
           onEditLoan={handleEditLoan}
         />
       </main>
+
+      {/* Feedback Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-slide-up">
+            <div className="bg-slate-800 border border-emerald-500/50 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+                <div className="bg-emerald-500/20 p-1 rounded-full">
+                    <Check size={16} className="text-emerald-400" />
+                </div>
+                <span className="font-medium text-sm">{toastMessage}</span>
+            </div>
+        </div>
+      )}
 
       {/* Cloud Config Modal */}
       {showCloudModal && (
