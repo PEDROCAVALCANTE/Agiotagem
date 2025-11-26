@@ -54,7 +54,7 @@ const App: React.FC = () => {
 
   // Filter out soft-deleted clients for the UI
   const activeClients = useMemo(() => {
-    return clients.filter(c => !c.isDeleted).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    return clients.filter(c => !c.isDeleted).sort((a,b) => a.name.localeCompare(b.name));
   }, [clients]);
 
   const [showForm, setShowForm] = useState(false);
@@ -111,7 +111,7 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Status check
+  // Status check logic - FIXED DATE PARSING
   useEffect(() => {
     setClients(prevClients => {
       let hasChanges = false;
@@ -121,7 +121,14 @@ const App: React.FC = () => {
       const updated = prevClients.map(client => {
         if (client.isDeleted || client.status === 'Completed') return client;
 
-        const isLate = client.installmentsList.some(inst => !inst.isPaid && new Date(inst.dueDate) < today);
+        const isLate = client.installmentsList.some(inst => {
+            if (inst.isPaid) return false;
+            // Manual parse to ensure local time correctness
+            const [y, m, d] = inst.dueDate.split('-').map(Number);
+            const dueDate = new Date(y, m - 1, d);
+            return dueDate < today;
+        });
+
         const newStatus: Client['status'] = isLate ? 'Late' : 'Active';
 
         if (client.status !== newStatus) {
@@ -136,7 +143,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Notification Logic
+  // Notification Logic - FIXED DATE PARSING
   const notifications = useMemo(() => {
     const alerts: { clientName: string; installment: number; value: number; days: number; status: 'overdue' | 'due' }[] = [];
     const today = new Date();
@@ -145,11 +152,16 @@ const App: React.FC = () => {
     activeClients.forEach(client => {
       client.installmentsList?.forEach(inst => {
         if (!inst.isPaid) {
-          const dueDate = new Date(inst.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
+          // Robust Date Parsing: "YYYY-MM-DD" -> Local Midnight Date
+          const [y, m, d] = inst.dueDate.split('-').map(Number);
+          const dueDate = new Date(y, m - 1, d);
+          
           const diffTime = dueDate.getTime() - today.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+          // Days < 0 means passed yesterday or before (Overdue)
+          // Days == 0 means Today (Due)
+          // Days == 1 means Tomorrow (Due)
           if (diffDays < 0) {
              alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: diffDays, status: 'overdue' });
           } else if (diffDays <= 1) {
@@ -161,13 +173,20 @@ const App: React.FC = () => {
     return alerts;
   }, [activeClients]);
 
-  // Overdue Clients Summary for the Dashboard Widget
+  // Overdue Clients Summary - FIXED DATE PARSING
   const overdueClientsSummary = useMemo(() => {
       const today = new Date();
       today.setHours(0,0,0,0);
       
       return activeClients.map(client => {
-          const overdueInstallments = client.installmentsList.filter(i => !i.isPaid && new Date(i.dueDate) < today);
+          const overdueInstallments = client.installmentsList.filter(i => {
+              if (i.isPaid) return false;
+              // Manual parse
+              const [y, m, d] = i.dueDate.split('-').map(Number);
+              const dueDate = new Date(y, m - 1, d);
+              return dueDate < today;
+          });
+          
           const totalOverdue = overdueInstallments.reduce((acc, curr) => acc + curr.value, 0);
           
           return {
