@@ -143,12 +143,12 @@ const ClientGroupSection: React.FC<ClientGroupProps> = ({
               });
               const progress = totalInstallments > 0 ? (totalPaid / totalInstallments) * 100 : 0;
 
-              // Pulse if specifically in red theme or generally detected as overdue
-              const shouldPulse = isRedTheme || group.hasOverdue;
+              // Force pulse if the client group has ANY overdue items
+              const shouldPulse = group.hasOverdue;
 
               const rowClass = shouldPulse 
-                ? `animate-pulse-red` 
-                : `${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'}`;
+                ? `animate-pulse-red border-l-4 border-l-red-500` 
+                : `${isExpanded ? 'bg-slate-700/30' : 'hover:bg-slate-700/10'} border-l-4 border-l-transparent`;
 
               return (
                 <React.Fragment key={group.name}>
@@ -412,10 +412,16 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           const totalReturn = client.principal * (1 + client.interestRate / 100);
           const profit = totalReturn - client.principal;
 
-          // Check for overdue
+          // Check for overdue using proper date parts to avoid TZ issues
           const today = new Date();
           today.setHours(0,0,0,0);
-          const isLate = client.installmentsList.some(i => !i.isPaid && new Date(i.dueDate) < today);
+          
+          const isLate = client.installmentsList.some(i => {
+              if (i.isPaid) return false;
+              const [y, m, d] = i.dueDate.split('-').map(Number);
+              const due = new Date(y, m - 1, d);
+              return due < today;
+          });
 
           groups[key].clients.push(client);
           groups[key].totalPrincipal += client.principal;
@@ -443,7 +449,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           }
       });
 
-      return Object.values(groups);
+      // Sort alphabetically
+      return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
   }, [clients]);
 
   const lateGroups = groupedClients.filter(g => g.overallStatus === 'Late');
