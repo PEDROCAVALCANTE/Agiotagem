@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, FinancialSummary } from './types';
 import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG, getDaysUntilDue, generateWhatsAppLink } from './constants';
-import { analyzePortfolio } from './services/aiService';
 import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, Plus, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle, Settings } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -57,8 +56,6 @@ const App: React.FC = () => {
   const [clientToDuplicate, setClientToDuplicate] = useState<Client | null>(null);
 
   const [showNotifications, setShowNotifications] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string>('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Refs
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -137,7 +134,7 @@ const App: React.FC = () => {
         phone: string;
         installment: number; 
         value: number; 
-        dueDate: string;
+        dueDate: string; 
         days: number; 
         status: 'overdue' | 'due' 
     }[] = [];
@@ -160,7 +157,7 @@ const App: React.FC = () => {
           } else if (days >= 0 && days <= warningDays) { // Dynamic warning window
              alerts.push({ 
                  clientName: client.name, 
-                 phone: client.phone,
+                 phone: client.phone, 
                  installment: inst.number, 
                  value: inst.value, 
                  dueDate: inst.dueDate,
@@ -303,13 +300,6 @@ const App: React.FC = () => {
     }
   };
 
-  const generateReport = async () => {
-    setIsAnalyzing(true);
-    const analysis = await analyzePortfolio(activeClients);
-    setAiInsight(analysis);
-    setIsAnalyzing(false);
-  };
-
   // Seed Data function for empty states
   const handleSeedData = () => {
       // Implement a simple seeder if needed, or rely on cloud data
@@ -427,48 +417,6 @@ const App: React.FC = () => {
         
         {/* Dashboard KPIs */}
         <DashboardCards summary={financialSummary} />
-
-        {/* AI Analysis Section */}
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-5">
-                <BrainCircuit size={120} className="text-purple-500" />
-            </div>
-            
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 relative z-10">
-                <div className="flex items-center gap-3 mb-4 md:mb-0">
-                    <div className="bg-purple-500/20 p-2 rounded-lg">
-                        <BrainCircuit className="text-purple-400" size={24} />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-white">Análise Inteligente</h2>
-                        <p className="text-slate-400 text-xs">Powered by Gemini AI</p>
-                    </div>
-                </div>
-                <button 
-                    onClick={generateReport}
-                    disabled={isAnalyzing}
-                    className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isAnalyzing ? <Loader2 className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
-                    Gerar Relatório
-                </button>
-            </div>
-
-            {aiInsight ? (
-                <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50 text-slate-300 text-sm leading-relaxed whitespace-pre-line animate-fade-in relative z-10">
-                    {aiInsight}
-                </div>
-            ) : (
-                <div className="bg-slate-900/30 rounded-lg p-8 border border-slate-700/30 text-center relative z-10">
-                    <p className="text-slate-500">Clique em "Gerar Relatório" para receber uma análise da sua carteira de clientes usando Gemini AI.</p>
-                </div>
-            )}
-
-            <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center gap-2 text-xs text-slate-500 relative z-10">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                ROI Médio da Carteira: <span className="text-emerald-400 font-bold">{financialSummary.averageRoi.toFixed(1)}%</span>
-            </div>
-        </div>
 
         {/* Chart Section */}
         <ChartSection data={progressionData} />
