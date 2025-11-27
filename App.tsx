@@ -36,9 +36,11 @@ const App: React.FC = () => {
     }
   });
 
-  // Filter out soft-deleted clients for the UI
+  // Filter out soft-deleted clients for the UI and Sort Alphabetically
   const activeClients = useMemo(() => {
-    return clients.filter(c => !c.isDeleted).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    return clients
+      .filter(c => !c.isDeleted)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [clients]);
 
   const [showForm, setShowForm] = useState(false);
