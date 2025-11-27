@@ -14,6 +14,19 @@ export const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
+// Calculate days until due (handling local time correctly)
+export const getDaysUntilDue = (dueDateString: string): number => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Parse YYYY-MM-DD explicitly to avoid UTC issues with new Date(string)
+  const [year, month, day] = dueDateString.split('-').map(Number);
+  const due = new Date(year, month - 1, day);
+
+  const diffTime = due.getTime() - today.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
 // User provided Firebase Credentials
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "AIzaSyCrsZQpDusua60XLcGXRfBIKb6exrRiP3I",

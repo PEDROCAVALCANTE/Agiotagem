@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, FinancialSummary } from './types';
-import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG } from './constants';
+import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG, getDaysUntilDue } from './constants';
 import { analyzePortfolio } from './services/aiService';
 import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -99,13 +99,11 @@ const App: React.FC = () => {
   useEffect(() => {
     setClients(prevClients => {
       let hasChanges = false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
+      
       const updated = prevClients.map(client => {
         if (client.isDeleted || client.status === 'Completed') return client;
 
-        const isLate = client.installmentsList.some(inst => !inst.isPaid && new Date(inst.dueDate) < today);
+        const isLate = client.installmentsList.some(inst => !inst.isPaid && getDaysUntilDue(inst.dueDate) < 0);
         const newStatus = isLate ? 'Late' : 'Active';
 
         if (client.status !== newStatus) {
@@ -123,27 +121,24 @@ const App: React.FC = () => {
   // Notification Logic
   const notifications = useMemo(() => {
     const alerts: { clientName: string; installment: number; value: number; days: number; status: 'overdue' | 'due' }[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
 
     activeClients.forEach(client => {
       client.installmentsList?.forEach(inst => {
         if (!inst.isPaid) {
-          const dueDate = new Date(inst.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          const diffTime = dueDate.getTime() - today.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const days = getDaysUntilDue(inst.dueDate);
 
-          if (diffDays < 0) {
-             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: diffDays, status: 'overdue' });
-          } else if (diffDays <= 1) {
-             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: diffDays, status: 'due' });
+          if (days < 0) {
+             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: days, status: 'overdue' });
+          } else if (days <= 1) { // 0 = Today, 1 = Tomorrow
+             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: days, status: 'due' });
           }
         }
       });
     });
     return alerts;
   }, [activeClients]);
+
+  const hasOverdueNotifications = useMemo(() => notifications.some(n => n.status === 'overdue'), [notifications]);
 
   const progressionData = useMemo(() => calculateProgression(activeClients), [activeClients]);
 
@@ -316,7 +311,7 @@ const App: React.FC = () => {
                 >
                     <Bell size={22} />
                     {notifications.length > 0 && (
-                        <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                        <span className={`absolute top-0 right-0 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse ${hasOverdueNotifications ? 'bg-red-500' : 'bg-yellow-500'}`}>
                             {notifications.length}
                         </span>
                     )}
@@ -324,8 +319,9 @@ const App: React.FC = () => {
 
                 {showNotifications && (
                     <div className="absolute right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-fade-in-down">
-                        <div className="p-3 bg-slate-900 border-b border-slate-700 font-bold text-sm text-slate-300">
-                            Cobranças ({notifications.length})
+                        <div className="p-3 bg-slate-900 border-b border-slate-700 font-bold text-sm text-slate-300 flex items-center justify-between">
+                            <span>Cobranças ({notifications.length})</span>
+                            {hasOverdueNotifications && <span className="text-[10px] text-red-400 flex items-center gap-1"><AlertTriangle size={10} /> Urgente</span>}
                         </div>
                         <div className="max-h-64 overflow-y-auto">
                             {notifications.length === 0 ? (
@@ -337,7 +333,7 @@ const App: React.FC = () => {
                                             <p className="font-bold text-white text-sm">{notif.clientName}</p>
                                             <p className="text-xs text-slate-400">Parc. #{notif.installment} - {formatCurrency(notif.value)}</p>
                                         </div>
-                                        <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                        <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'}`}>
                                             {notif.status === 'overdue' ? 'Vencido' : (notif.days === 0 ? 'Vence Hoje' : 'Vence Amanhã')}
                                         </span>
                                     </div>

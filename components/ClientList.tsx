@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
-import { formatCurrency } from '../constants';
+import { formatCurrency, getDaysUntilDue } from '../constants';
 import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, TrendingUp, Copy, Layers, AlertTriangle, StickyNote } from 'lucide-react';
 
 interface ClientListProps {
@@ -89,32 +89,22 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
   const getInstallmentStatusColor = (installment: Installment) => {
     if (installment.isPaid) return 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400';
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(installment.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    
-    const diffTime = dueDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const days = getDaysUntilDue(installment.dueDate);
 
-    if (diffDays < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue
-    if (diffDays <= 1) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; // Due soon
+    if (days < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue
+    if (days <= 1) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; // Due soon (Today or Tomorrow)
     
     return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
   };
 
   const getStatusText = (installment: Installment) => {
     if (installment.isPaid) return 'PAGO';
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDate = new Date(installment.dueDate);
-    dueDate.setHours(0, 0, 0, 0);
-    const diffTime = dueDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    const days = getDaysUntilDue(installment.dueDate);
 
-    if (diffDays < 0) return 'VENCIDO';
-    if (diffDays === 0) return 'HOJE';
-    if (diffDays === 1) return 'AMANHÃ';
+    if (days < 0) return 'VENCIDO';
+    if (days === 0) return 'HOJE';
+    if (days === 1) return 'AMANHÃ';
     return 'ABERTO';
   }
 
