@@ -321,7 +321,7 @@ const App: React.FC = () => {
                                             <p className="text-xs text-slate-400">Parc. #{notif.installment} - {formatCurrency(notif.value)}</p>
                                         </div>
                                         <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                                            {notif.status === 'overdue' ? 'Vencido' : 'Vence Hoje'}
+                                            {notif.status === 'overdue' ? 'Vencido' : (notif.days === 0 ? 'Vence Hoje' : 'Vence Amanhã')}
                                         </span>
                                     </div>
                                 ))
