@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
-import { formatCurrency, getDaysUntilDue } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, TrendingUp, Copy, Layers, AlertTriangle, StickyNote } from 'lucide-react';
+import { formatCurrency, getDaysUntilDue, generateWhatsAppLink } from '../constants';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -299,6 +299,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                         const statusColor = getInstallmentStatusColor(inst);
                                                         const statusText = getStatusText(inst);
                                                         const displayDate = inst.dueDate.split('-').reverse().join('/');
+                                                        const days = getDaysUntilDue(inst.dueDate);
+                                                        const isOverdue = days < 0 && !inst.isPaid;
 
                                                         return (
                                                             <div key={inst.number} className={`border rounded-lg p-3 transition-all ${statusColor}`}>
@@ -315,13 +317,26 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                                         <div className="font-mono text-sm">{displayDate}</div>
                                                                         <div className="font-bold text-lg mt-1">{formatCurrency(inst.value)}</div>
                                                                     </div>
-                                                                    <button 
-                                                                        onClick={() => onTogglePayment(loan.id, inst.number)}
-                                                                        className={`p-2 rounded-full transition-all ${inst.isPaid ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                                                        title={inst.isPaid ? "Marcar como não pago" : "Marcar como pago"}
-                                                                    >
-                                                                        <CheckCircle size={20} />
-                                                                    </button>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {isOverdue && loan.phone && (
+                                                                           <a 
+                                                                             href={generateWhatsAppLink(loan.phone, loan.name, inst.number, inst.value, inst.dueDate)}
+                                                                             target="_blank"
+                                                                             rel="noopener noreferrer"
+                                                                             className="p-2 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500 hover:text-white transition-all shadow-lg"
+                                                                             title="Cobrar no WhatsApp"
+                                                                           >
+                                                                             <MessageCircle size={20} />
+                                                                           </a>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => onTogglePayment(loan.id, inst.number)}
+                                                                            className={`p-2 rounded-full transition-all ${inst.isPaid ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                                                                            title={inst.isPaid ? "Marcar como não pago" : "Marcar como pago"}
+                                                                        >
+                                                                            <CheckCircle size={20} />
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         );

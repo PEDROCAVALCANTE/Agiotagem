@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, FinancialSummary } from './types';
-import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG, getDaysUntilDue } from './constants';
+import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG, getDaysUntilDue, generateWhatsAppLink } from './constants';
 import { analyzePortfolio } from './services/aiService';
 import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -120,7 +120,15 @@ const App: React.FC = () => {
 
   // Notification Logic
   const notifications = useMemo(() => {
-    const alerts: { clientName: string; installment: number; value: number; days: number; status: 'overdue' | 'due' }[] = [];
+    const alerts: { 
+        clientName: string; 
+        phone: string;
+        installment: number; 
+        value: number; 
+        dueDate: string;
+        days: number; 
+        status: 'overdue' | 'due' 
+    }[] = [];
 
     activeClients.forEach(client => {
       client.installmentsList?.forEach(inst => {
@@ -128,9 +136,25 @@ const App: React.FC = () => {
           const days = getDaysUntilDue(inst.dueDate);
 
           if (days < 0) {
-             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: days, status: 'overdue' });
+             alerts.push({ 
+                 clientName: client.name, 
+                 phone: client.phone,
+                 installment: inst.number, 
+                 value: inst.value, 
+                 dueDate: inst.dueDate,
+                 days: days, 
+                 status: 'overdue' 
+             });
           } else if (days <= 1) { // 0 = Today, 1 = Tomorrow
-             alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: days, status: 'due' });
+             alerts.push({ 
+                 clientName: client.name, 
+                 phone: client.phone,
+                 installment: inst.number, 
+                 value: inst.value, 
+                 dueDate: inst.dueDate,
+                 days: days, 
+                 status: 'due' 
+             });
           }
         }
       });
@@ -328,14 +352,30 @@ const App: React.FC = () => {
                                 <div className="p-4 text-center text-slate-500 text-sm">Nenhuma pendência urgente.</div>
                             ) : (
                                 notifications.map((notif, idx) => (
-                                    <div key={idx} className="p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors flex items-center justify-between">
-                                        <div>
+                                    <div key={idx} className="p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors flex items-center justify-between group">
+                                        <div className="flex-1">
                                             <p className="font-bold text-white text-sm">{notif.clientName}</p>
                                             <p className="text-xs text-slate-400">Parc. #{notif.installment} - {formatCurrency(notif.value)}</p>
                                         </div>
-                                        <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'}`}>
-                                            {notif.status === 'overdue' ? 'Vencido' : (notif.days === 0 ? 'Vence Hoje' : 'Vence Amanhã')}
-                                        </span>
+                                        
+                                        <div className="flex items-center gap-2">
+                                            {/* WhatsApp Button for Overdue items */}
+                                            {notif.status === 'overdue' && notif.phone && (
+                                                <a 
+                                                    href={generateWhatsAppLink(notif.phone, notif.clientName, notif.installment, notif.value, notif.dueDate)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="p-1.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500 hover:text-white transition-all"
+                                                    title="Cobrar no WhatsApp"
+                                                >
+                                                    <MessageCircle size={14} />
+                                                </a>
+                                            )}
+
+                                            <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'}`}>
+                                                {notif.status === 'overdue' ? 'Vencido' : (notif.days === 0 ? 'Vence Hoje' : 'Vence Amanhã')}
+                                            </span>
+                                        </div>
                                     </div>
                                 ))
                             )}

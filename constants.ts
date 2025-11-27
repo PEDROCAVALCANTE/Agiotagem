@@ -27,6 +27,31 @@ export const getDaysUntilDue = (dueDateString: string): number => {
   return Math.round(diffTime / (1000 * 60 * 60 * 24));
 };
 
+// Generate WhatsApp Link
+export const generateWhatsAppLink = (phone: string, clientName: string, installmentNumber: number, value: number, dueDate: string): string => {
+  if (!phone) return '#';
+  
+  // 1. Clean phone number (remove non-digits)
+  let cleanPhone = phone.replace(/\D/g, '');
+
+  // 2. Add Country Code if missing (Assuming BR +55 for 10 or 11 digit numbers)
+  if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = '55' + cleanPhone;
+  }
+
+  // 3. Format Date
+  const dateFormatted = dueDate.split('-').reverse().join('/');
+  const valueFormatted = formatCurrency(value);
+
+  // 4. Construct Message
+  const message = `Olá ${clientName}, tudo bem?
+Passando para lembrar da parcela *#${installmentNumber}* no valor de *${valueFormatted}* que venceu dia *${dateFormatted}*.
+Podemos verificar o pagamento?`;
+
+  // 5. Return URL
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+};
+
 // User provided Firebase Credentials
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: "AIzaSyCrsZQpDusua60XLcGXRfBIKb6exrRiP3I",
