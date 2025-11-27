@@ -1,4 +1,3 @@
-
 export interface Installment {
   number: number;
   dueDate: string; // ISO Date string YYYY-MM-DD
@@ -16,7 +15,6 @@ export interface Client {
   startDate: string;
   status: 'Active' | 'Completed' | 'Late'; // Status field
   installmentsList: Installment[]; // Detailed breakdown
-  observation?: string; // Notes about the loan
   
   // Sync Fields
   isDeleted?: boolean; // If true, client is hidden (soft deleted)

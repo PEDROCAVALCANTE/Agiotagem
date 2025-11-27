@@ -1,36 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, FinancialSummary } from './types';
-import { calculateProgression, formatCurrency } from './constants';
+import { calculateProgression, formatCurrency, DEFAULT_FIREBASE_CONFIG } from './constants';
+import { analyzePortfolio } from './services/aiService';
 import { DashboardCards } from './components/DashboardCards';
 import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, Loader2, Bell, Cloud, CloudOff, X, Save, AlertTriangle, CheckCircle2, MessageCircle, Phone, ArrowRight, Check } from 'lucide-react';
-
-// Hardcoded configuration provided by the user
-const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
-    apiKey: "AIzaSyCrsZQpDusua60XLcGXRfBIKb6exrRiP3I",
-    authDomain: "giliarde-agi.firebaseapp.com",
-    projectId: "giliarde-agi",
-    storageBucket: "giliarde-agi.firebasestorage.app",
-    messagingSenderId: "1052082323824",
-    appId: "1:1052082323824:web:c1acb45f34fc6b8ae44fb5"
-};
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save } from 'lucide-react';
 
 const App: React.FC = () => {
-  // Cloud Config State - Defaults to the hardcoded config if nothing is in localStorage
-  const [cloudConfig, setCloudConfig] = useState<FirebaseConfig | null>(() => {
-    const saved = localStorage.getItem('firebaseConfig');
-    return saved ? JSON.parse(saved) : DEFAULT_FIREBASE_CONFIG;
-  });
-  
+  // Cloud Config State - Default to the hardcoded config provided by user
+  const [cloudConfig, setCloudConfig] = useState<FirebaseConfig | null>(DEFAULT_FIREBASE_CONFIG);
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
-  const [configInput, setConfigInput] = useState('');
-  
-  // Feedback Toast State
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [configInput, setConfigInput] = useState(JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2));
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('clients');
@@ -40,7 +24,7 @@ const App: React.FC = () => {
         if (Array.isArray(parsed)) {
             return parsed.map((c: any) => ({
                 ...c,
-                status: (c.status as Client['status']) || 'Active',
+                status: c.status || 'Active',
                 lastUpdated: c.lastUpdated || Date.now(),
                 isDeleted: c.isDeleted || false
             }));
@@ -54,21 +38,18 @@ const App: React.FC = () => {
 
   // Filter out soft-deleted clients for the UI
   const activeClients = useMemo(() => {
-    return clients.filter(c => !c.isDeleted).sort((a,b) => a.name.localeCompare(b.name));
+    return clients.filter(c => !c.isDeleted).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   }, [clients]);
 
   const [showForm, setShowForm] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [clientToDuplicate, setClientToDuplicate] = useState<Client | null>(null);
+
   const [showNotifications, setShowNotifications] = useState(false);
+  const [aiInsight, setAiInsight] = useState<string>('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Refs
   const notificationRef = useRef<HTMLDivElement>(null);
-
-  // Helper to show toast
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
 
   // Initialize Cloud on Mount
   useEffect(() => {
@@ -79,9 +60,8 @@ const App: React.FC = () => {
         // Start listening to real-time updates
         const unsubscribe = subscribeToClients((updatedClients) => {
             setClients(prev => {
-                // Simplistic Merge: Cloud overwrites local if connected
-                // Ideally we would merge based on lastUpdated, but for this structure
-                // we treat the cloud as the single source of truth when connected.
+                // When cloud updates, we replace local state with cloud state
+                // This ensures sync. In a more complex app, we'd merge strategies.
                 return updatedClients.map(c => ({
                     ...c,
                     status: c.status || 'Active',
@@ -89,7 +69,6 @@ const App: React.FC = () => {
                 }));
             });
         });
-        
         return () => unsubscribe();
       }
     }
@@ -111,7 +90,7 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Status check logic - FIXED DATE PARSING
+  // Status check
   useEffect(() => {
     setClients(prevClients => {
       let hasChanges = false;
@@ -121,15 +100,8 @@ const App: React.FC = () => {
       const updated = prevClients.map(client => {
         if (client.isDeleted || client.status === 'Completed') return client;
 
-        const isLate = client.installmentsList.some(inst => {
-            if (inst.isPaid) return false;
-            // Manual parse to ensure local time correctness
-            const [y, m, d] = inst.dueDate.split('-').map(Number);
-            const dueDate = new Date(y, m - 1, d);
-            return dueDate < today;
-        });
-
-        const newStatus: Client['status'] = isLate ? 'Late' : 'Active';
+        const isLate = client.installmentsList.some(inst => !inst.isPaid && new Date(inst.dueDate) < today);
+        const newStatus = isLate ? 'Late' : 'Active';
 
         if (client.status !== newStatus) {
           hasChanges = true;
@@ -143,7 +115,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Notification Logic - FIXED DATE PARSING
+  // Notification Logic
   const notifications = useMemo(() => {
     const alerts: { clientName: string; installment: number; value: number; days: number; status: 'overdue' | 'due' }[] = [];
     const today = new Date();
@@ -152,16 +124,11 @@ const App: React.FC = () => {
     activeClients.forEach(client => {
       client.installmentsList?.forEach(inst => {
         if (!inst.isPaid) {
-          // Robust Date Parsing: "YYYY-MM-DD" -> Local Midnight Date
-          const [y, m, d] = inst.dueDate.split('-').map(Number);
-          const dueDate = new Date(y, m - 1, d);
-          
+          const dueDate = new Date(inst.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
           const diffTime = dueDate.getTime() - today.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-          // Days < 0 means passed yesterday or before (Overdue)
-          // Days == 0 means Today (Due)
-          // Days == 1 means Tomorrow (Due)
           if (diffDays < 0) {
              alerts.push({ clientName: client.name, installment: inst.number, value: inst.value, days: diffDays, status: 'overdue' });
           } else if (diffDays <= 1) {
@@ -171,30 +138,6 @@ const App: React.FC = () => {
       });
     });
     return alerts;
-  }, [activeClients]);
-
-  // Overdue Clients Summary - FIXED DATE PARSING
-  const overdueClientsSummary = useMemo(() => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      return activeClients.map(client => {
-          const overdueInstallments = client.installmentsList.filter(i => {
-              if (i.isPaid) return false;
-              // Manual parse
-              const [y, m, d] = i.dueDate.split('-').map(Number);
-              const dueDate = new Date(y, m - 1, d);
-              return dueDate < today;
-          });
-          
-          const totalOverdue = overdueInstallments.reduce((acc, curr) => acc + curr.value, 0);
-          
-          return {
-              ...client,
-              totalOverdue,
-              overdueCount: overdueInstallments.length
-          };
-      }).filter(c => c.totalOverdue > 0);
   }, [activeClients]);
 
   const progressionData = useMemo(() => calculateProgression(activeClients), [activeClients]);
@@ -224,29 +167,9 @@ const App: React.FC = () => {
 
   const handleCloudConfigSubmit = () => {
     try {
-        let cleaned = configInput.trim();
-        
-        // Remove variable declaration (const firebaseConfig =) if present
-        if (cleaned.includes('=')) {
-            const parts = cleaned.split('=');
-            if (parts.length > 1) {
-                cleaned = parts[1].trim();
-            }
-        }
-        
-        // Remove trailing semicolon
-        if (cleaned.endsWith(';')) cleaned = cleaned.slice(0, -1);
-        
-        // Attempt to fix unquoted keys (JavaScript object syntax to JSON)
-        const jsonString = cleaned.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
-
-        const config = JSON.parse(jsonString);
-        
-        localStorage.setItem('firebaseConfig', JSON.stringify(config));
+        const config = JSON.parse(configInput);
         setCloudConfig(config);
         setShowCloudModal(false);
-        showToast("Nuvem conectada com sucesso!");
-        
         // Attempt to sync current local data to cloud immediately upon connection
         if (activeClients.length > 0) {
              setTimeout(() => {
@@ -254,65 +177,32 @@ const App: React.FC = () => {
              }, 1000);
         }
     } catch (e) {
-        console.error(e);
-        alert("Não foi possível ler o código. Certifique-se de copiar o trecho completo que começa com '{' e termina com '}'.");
+        alert("JSON inválido. Verifique suas credenciais.");
     }
   };
 
   const handleDisconnectCloud = () => {
-    localStorage.removeItem('firebaseConfig');
     setCloudConfig(null);
     setIsCloudConnected(false);
-    showToast("Desconectado da nuvem.");
-    setTimeout(() => window.location.reload(), 1000); // Force reload to clear connections
+    window.location.reload(); // Force reload to clear connections
   };
 
-  const handleSaveClient = (clientToSave: Client) => {
-    setClients(prev => {
-        // If it's an update, replace the existing one
-        const exists = prev.find(c => c.id === clientToSave.id);
-        if (exists) {
-            return prev.map(c => c.id === clientToSave.id ? clientToSave : c);
-        }
-        // If new, add it
-        return [...prev, clientToSave];
-    });
+  const handleAddClient = (newClient: Client) => {
+    // Optimistic Update
+    setClients(prev => [...prev, newClient]);
+    
     // Cloud Sync
     if (isCloudConnected) {
-        saveClientToCloud(clientToSave);
+        saveClientToCloud(newClient);
     }
     setShowForm(false);
-    setEditingClient(null);
-    showToast(editingClient ? "Contrato atualizado!" : "Novo cliente registrado!");
+    setClientToDuplicate(null);
   };
 
-  const handleEditClientName = (oldName: string, newName: string) => {
-      if (!newName.trim() || oldName === newName) return;
-      
-      const timestamp = Date.now();
-      const clientsToUpdate: Client[] = [];
-
-      setClients(prev => prev.map(c => {
-          if (c.name === oldName) {
-              const updated = { ...c, name: newName, lastUpdated: timestamp };
-              clientsToUpdate.push(updated);
-              return updated;
-          }
-          return c;
-      }));
-
-      // Cloud Sync for all affected clients
-      if (isCloudConnected && clientsToUpdate.length > 0) {
-          clientsToUpdate.forEach(c => saveClientToCloud(c));
-      }
-      showToast("Nome do cliente atualizado.");
-  };
-
-  const handleEditLoan = (client: Client) => {
-      setEditingClient(client);
-      setShowForm(true);
-      // Scroll to top
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleDuplicateClient = (client: Client) => {
+    setClientToDuplicate(client);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteClient = (id: string) => {
@@ -331,7 +221,6 @@ const App: React.FC = () => {
       if (isCloudConnected && deletedClient) {
         saveClientToCloud(deletedClient);
       }
-      showToast("Cliente removido da carteira.");
     }
   };
 
@@ -362,6 +251,18 @@ const App: React.FC = () => {
     if (isCloudConnected && updatedClient) {
         saveClientToCloud(updatedClient);
     }
+  };
+
+  const generateReport = async () => {
+    setIsAnalyzing(true);
+    const analysis = await analyzePortfolio(activeClients);
+    setAiInsight(analysis);
+    setIsAnalyzing(false);
+  };
+
+  // Seed Data function for empty states
+  const handleSeedData = () => {
+      // Implement a simple seeder if needed, or rely on cloud data
   };
 
   return (
@@ -430,7 +331,7 @@ const App: React.FC = () => {
 
             <button 
               onClick={() => {
-                  setEditingClient(null);
+                  setClientToDuplicate(null);
                   setShowForm(!showForm);
               }}
               className="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
@@ -446,80 +347,46 @@ const App: React.FC = () => {
         {/* Dashboard KPIs */}
         <DashboardCards summary={financialSummary} />
 
-        {/* OVERDUE CLIENTS SECTION */}
-        <div className={`bg-slate-800 border ${overdueClientsSummary.length > 0 ? 'border-red-900/50' : 'border-slate-700'} rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden transition-all duration-300`}>
+        {/* AI Analysis Section */}
+        <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-lg mb-8 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-5">
+                <BrainCircuit size={120} className="text-purple-500" />
+            </div>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 relative z-10">
                 <div className="flex items-center gap-3 mb-4 md:mb-0">
-                    <div className={`${overdueClientsSummary.length > 0 ? 'bg-red-500/20 animate-pulse' : 'bg-emerald-500/20'} p-2 rounded-lg`}>
-                        {overdueClientsSummary.length > 0 ? <AlertTriangle className="text-red-400" size={24} /> : <CheckCircle2 className="text-emerald-400" size={24} />}
+                    <div className="bg-purple-500/20 p-2 rounded-lg">
+                        <BrainCircuit className="text-purple-400" size={24} />
                     </div>
                     <div>
-                        <h2 className={`text-xl font-bold ${overdueClientsSummary.length > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                            {overdueClientsSummary.length > 0 ? 'Cobrança Imediata' : 'Tudo em Dia'}
-                        </h2>
-                        <p className="text-slate-400 text-xs">
-                            {overdueClientsSummary.length > 0 ? 'Clientes com parcelas vencidas detectados' : 'Nenhuma pendência urgente encontrada'}
-                        </p>
+                        <h2 className="text-xl font-bold text-white">Análise Inteligente</h2>
+                        <p className="text-slate-400 text-xs">Powered by Gemini AI</p>
                     </div>
                 </div>
+                <button 
+                    onClick={generateReport}
+                    disabled={isAnalyzing}
+                    className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isAnalyzing ? <Loader2 className="animate-spin" size={16} /> : <BrainCircuit size={16} />}
+                    Gerar Relatório
+                </button>
             </div>
 
-            {overdueClientsSummary.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
-                    {overdueClientsSummary.map(client => {
-                        const cleanPhone = client.phone ? client.phone.replace(/\D/g, '') : '';
-                        const fullPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-                        
-                        // WhatsApp Message Formatting
-                        const message = `Olá *${client.name}*, tudo bem? 👋\n\nIdentificamos pendências no valor total de *${formatCurrency(client.totalOverdue)}* no nosso sistema.\n\nPodemos conversar para regularizar?`;
-                        const encodedMessage = encodeURIComponent(message);
-                        
-                        const whatsappLink = cleanPhone ? `https://wa.me/${fullPhone}?text=${encodedMessage}` : '#';
-
-                        return (
-                            <div key={client.id} className="bg-red-900/10 border border-red-500/20 rounded-xl p-5 flex flex-col justify-between group hover:bg-red-900/15 transition-colors shadow-sm">
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-start">
-                                        <h4 className="font-bold text-white text-lg">{client.name}</h4>
-                                        <div className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">
-                                            Atrasado
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 bg-red-950/30 p-3 rounded-lg border border-red-500/10">
-                                        <p className="text-xs text-slate-400 mb-1">Total Vencido</p>
-                                        <p className="text-2xl font-bold text-red-400">{formatCurrency(client.totalOverdue)}</p>
-                                        <p className="text-[10px] text-red-300/70 mt-1 flex items-center gap-1">
-                                            <AlertTriangle size={10} /> {client.overdueCount} parcela(s) vencida(s)
-                                        </p>
-                                    </div>
-                                </div>
-                                
-                                {client.phone ? (
-                                    <a 
-                                    href={whatsappLink}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40"
-                                    title="Enviar mensagem no WhatsApp"
-                                    >
-                                        <MessageCircle size={18} />
-                                        <span>Cobrar via WhatsApp</span>
-                                    </a>
-                                ) : (
-                                    <button disabled className="w-full bg-slate-700 text-slate-500 font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed">
-                                        <Phone size={18} /> Sem Telefone
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
+            {aiInsight ? (
+                <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700/50 text-slate-300 text-sm leading-relaxed whitespace-pre-line animate-fade-in relative z-10">
+                    {aiInsight}
                 </div>
             ) : (
-                <div className="bg-emerald-900/10 border border-emerald-500/10 rounded-lg p-6 text-center relative z-10">
-                    <p className="text-emerald-300 font-medium">Parabéns! Sua carteira de clientes está saudável.</p>
+                <div className="bg-slate-900/30 rounded-lg p-8 border border-slate-700/30 text-center relative z-10">
+                    <p className="text-slate-500">Clique em "Gerar Relatório" para receber uma análise da sua carteira de clientes usando Gemini AI.</p>
                 </div>
             )}
+
+            <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center gap-2 text-xs text-slate-500 relative z-10">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                ROI Médio da Carteira: <span className="text-emerald-400 font-bold">{financialSummary.averageRoi.toFixed(1)}%</span>
+            </div>
         </div>
 
         {/* Chart Section */}
@@ -528,12 +395,12 @@ const App: React.FC = () => {
         {/* Client Form */}
         {showForm && (
           <ClientForm 
-            onSave={handleSaveClient} 
+            onAddClient={handleAddClient} 
             onCancel={() => {
                 setShowForm(false);
-                setEditingClient(null);
+                setClientToDuplicate(null);
             }} 
-            initialData={editingClient}
+            initialData={clientToDuplicate}
           />
         )}
 
@@ -547,22 +414,9 @@ const App: React.FC = () => {
           clients={activeClients} 
           onDelete={handleDeleteClient}
           onTogglePayment={handleTogglePayment}
-          onEditName={handleEditClientName}
-          onEditLoan={handleEditLoan}
+          onDuplicate={handleDuplicateClient}
         />
       </main>
-
-      {/* Feedback Toast */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-[100] animate-slide-up">
-            <div className="bg-slate-800 border border-emerald-500/50 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-                <div className="bg-emerald-500/20 p-1 rounded-full">
-                    <Check size={16} className="text-emerald-400" />
-                </div>
-                <span className="font-medium text-sm">{toastMessage}</span>
-            </div>
-        </div>
-      )}
 
       {/* Cloud Config Modal */}
       {showCloudModal && (
@@ -580,12 +434,12 @@ const App: React.FC = () => {
                 {!isCloudConnected ? (
                     <>
                         <p className="text-slate-400 text-sm mb-4">
-                            Cole o código do Firebase <b>exatamente como copiou do site</b> (com 'const config = ...' ou apenas as chaves). O sistema ajusta automaticamente.
+                            Cole o JSON de configuração do seu projeto Firebase para ativar a sincronização em tempo real entre dispositivos.
                         </p>
                         <textarea
                             value={configInput}
                             onChange={(e) => setConfigInput(e.target.value)}
-                            placeholder='Cole o código aqui...'
+                            placeholder='{"apiKey": "...", "authDomain": "..."}'
                             className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-300 font-mono mb-4 focus:outline-none focus:border-blue-500"
                         />
                         <button 

@@ -14,6 +14,16 @@ export const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
+// User provided Firebase Credentials
+export const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCrsZQpDusua60XLcGXRfBIKb6exrRiP3I",
+  authDomain: "giliarde-agi.firebaseapp.com",
+  projectId: "giliarde-agi",
+  storageBucket: "giliarde-agi.firebasestorage.app",
+  messagingSenderId: "1052082323824",
+  appId: "1:1052082323824:web:c1acb45f34fc6b8ae44fb5"
+};
+
 // Calculate progression data for charts
 export const calculateProgression = (clients: Client[]): ProgressionPoint[] => {
   // Find the max number of installments to determine x-axis length
