@@ -15,6 +15,7 @@ export interface Client {
   startDate: string;
   status: 'Active' | 'Completed' | 'Late'; // Status field
   installmentsList: Installment[]; // Detailed breakdown
+  annotation?: string; // Notes about the client/loan
   
   // Sync Fields
   isDeleted?: boolean; // If true, client is hidden (soft deleted)

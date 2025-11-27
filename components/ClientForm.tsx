@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { generateId, formatCurrency } from '../constants';
-import { Plus, Save, X, Calculator } from 'lucide-react';
+import { Plus, Save, X, Calculator, StickyNote } from 'lucide-react';
 
 interface ClientFormProps {
   onAddClient: (client: Client) => void;
@@ -16,6 +16,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel, i
   const [phone, setPhone] = useState('');
   const [installmentValue, setInstallmentValue] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [annotation, setAnnotation] = useState('');
 
   // Pre-fill form if duplicating
   useEffect(() => {
@@ -24,6 +25,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel, i
       setPhone(initialData.phone);
       setAmount(initialData.principal.toString());
       setInstallments(initialData.installments.toString());
+      setAnnotation(initialData.annotation || '');
       
       // Try to get the installment value from the list
       if (initialData.installmentsList && initialData.installmentsList.length > 0) {
@@ -96,6 +98,7 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel, i
       startDate: startDate,
       status: 'Active',
       installmentsList: generatedInstallments,
+      annotation: annotation,
       isDeleted: false,
       lastUpdated: Date.now()
     };
@@ -192,6 +195,18 @@ export const ClientForm: React.FC<ClientFormProps> = ({ onAddClient, onCancel, i
               required
             />
           </div>
+        </div>
+
+        <div className="col-span-1 md:col-span-2 lg:col-span-3">
+          <label className="block text-xs text-slate-400 mb-1 uppercase font-bold flex items-center gap-1">
+            <StickyNote size={12} /> Observações / Anotações
+          </label>
+          <textarea 
+            value={annotation}
+            onChange={(e) => setAnnotation(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500 resize-none h-20"
+            placeholder="Ex: Pix: (00) 00000-0000 - Banco X..."
+          />
         </div>
 
         {/* Live Calculation Preview */}

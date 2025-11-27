@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, TrendingUp, Copy, Layers, AlertTriangle } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, Clock, TrendingUp, Copy, Layers, AlertTriangle, StickyNote } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
   onDelete: (id: string) => void;
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
   onDuplicate: (client: Client) => void;
+  onUpdateAnnotation: (id: string, note: string) => void;
 }
 
 interface GroupedClient {
@@ -23,7 +24,7 @@ interface GroupedClient {
   totalInstallmentCount: number;
 }
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation }) => {
   // Use Name as the key for expansion since we are grouping by name
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
@@ -36,11 +37,12 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     const groups: Record<string, GroupedClient> = {};
 
     clients.forEach(client => {
-      const key = client.name.trim();
+      // Use lower case for key to unify 'Joao' and 'joao'
+      const key = client.name.trim().toLowerCase();
       
       if (!groups[key]) {
         groups[key] = {
-          name: client.name,
+          name: client.name, // Display the first name found (preserves casing of first entry)
           phone: client.phone,
           loans: [],
           totalPrincipal: 0,
@@ -276,11 +278,32 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                 </div>
                                             </div>
 
-                                            {/* Installments Grid */}
+                                            {/* Installments Grid & Annotation */}
                                             <div className="p-4 bg-slate-900/50">
-                                                <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                                                    <Calendar size={14} /> Parcelas do Empréstimo
-                                                </h4>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                                                        <Calendar size={14} /> Parcelas do Empréstimo
+                                                    </h4>
+                                                </div>
+                                                
+                                                {/* Editable Annotation Field */}
+                                                <div className="mb-4">
+                                                    <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block flex items-center gap-1">
+                                                         <StickyNote size={10} /> Anotações (Editável)
+                                                    </label>
+                                                    <textarea 
+                                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none resize-none placeholder-slate-600"
+                                                        rows={2}
+                                                        placeholder="Clique para adicionar observações..."
+                                                        defaultValue={loan.annotation || ''}
+                                                        onBlur={(e) => {
+                                                            if (e.target.value !== (loan.annotation || '')) {
+                                                                onUpdateAnnotation(loan.id, e.target.value);
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                                     {loan.installmentsList?.map((inst) => {
                                                         const statusColor = getInstallmentStatusColor(inst);

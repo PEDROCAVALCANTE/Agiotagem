@@ -7,7 +7,7 @@ import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -36,12 +36,15 @@ const App: React.FC = () => {
     }
   });
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Filter out soft-deleted clients for the UI and Sort Alphabetically
   const activeClients = useMemo(() => {
     return clients
       .filter(c => !c.isDeleted)
+      .filter(c => c.name.toLowerCase().includes(searchQuery.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [clients]);
+  }, [clients, searchQuery]);
 
   const [showForm, setShowForm] = useState(false);
   const [clientToDuplicate, setClientToDuplicate] = useState<Client | null>(null);
@@ -205,6 +208,20 @@ const App: React.FC = () => {
     setClientToDuplicate(client);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUpdateAnnotation = (clientId: string, annotation: string) => {
+    setClients(prev => {
+        const updated = prev.map(c => {
+            if (c.id === clientId) {
+                const newClient = { ...c, annotation, lastUpdated: Date.now() };
+                if (isCloudConnected) saveClientToCloud(newClient);
+                return newClient;
+            }
+            return c;
+        });
+        return updated;
+    });
   };
 
   const handleDeleteClient = (id: string) => {
@@ -406,9 +423,24 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Client List Header */}
-        <div className="flex items-center gap-3 mb-4 pl-1 border-l-4 border-emerald-500">
-            <h2 className="text-xl font-bold text-white">Carteira de Clientes</h2>
+        {/* Client List Header & Search */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3 pl-1 border-l-4 border-emerald-500">
+                <h2 className="text-xl font-bold text-white">Carteira de Clientes</h2>
+            </div>
+            
+            <div className="relative w-full md:w-72">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="text-slate-500" size={18} />
+                </div>
+                <input 
+                    type="text" 
+                    className="bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block w-full pl-10 p-2.5 placeholder-slate-500 transition-colors focus:outline-none" 
+                    placeholder="Buscar por nome..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                />
+            </div>
         </div>
 
         {/* Client List */}
@@ -417,6 +449,7 @@ const App: React.FC = () => {
           onDelete={handleDeleteClient}
           onTogglePayment={handleTogglePayment}
           onDuplicate={handleDuplicateClient}
+          onUpdateAnnotation={handleUpdateAnnotation}
         />
       </main>
 
