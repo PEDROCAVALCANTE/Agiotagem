@@ -7,7 +7,7 @@ import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Plus, BrainCircuit, Loader2, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle, Settings } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -15,6 +15,13 @@ const App: React.FC = () => {
   const [isCloudConnected, setIsCloudConnected] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [configInput, setConfigInput] = useState(JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2));
+
+  // Settings State
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [warningDays, setWarningDays] = useState<number>(() => {
+    const saved = localStorage.getItem('settings_warningDays');
+    return saved ? parseInt(saved, 10) : 1;
+  });
 
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('clients');
@@ -84,6 +91,11 @@ const App: React.FC = () => {
     localStorage.setItem('clients', JSON.stringify(clients));
   }, [clients]);
 
+  // Persist Settings
+  useEffect(() => {
+    localStorage.setItem('settings_warningDays', warningDays.toString());
+  }, [warningDays]);
+
   const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
@@ -145,7 +157,7 @@ const App: React.FC = () => {
                  days: days, 
                  status: 'overdue' 
              });
-          } else if (days <= 1) { // 0 = Today, 1 = Tomorrow
+          } else if (days >= 0 && days <= warningDays) { // Dynamic warning window
              alerts.push({ 
                  clientName: client.name, 
                  phone: client.phone,
@@ -160,7 +172,7 @@ const App: React.FC = () => {
       });
     });
     return alerts;
-  }, [activeClients]);
+  }, [activeClients, warningDays]);
 
   const hasOverdueNotifications = useMemo(() => notifications.some(n => n.status === 'overdue'), [notifications]);
 
@@ -318,6 +330,15 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
+            {/* Settings Button */}
+            <button 
+                onClick={() => setShowSettingsModal(true)}
+                className="p-2 text-slate-400 hover:text-white transition-colors"
+                title="Configurações"
+            >
+                <Settings size={20} />
+            </button>
+
             {/* Cloud Status */}
             <button 
                 onClick={() => setShowCloudModal(true)}
@@ -351,7 +372,12 @@ const App: React.FC = () => {
                             {notifications.length === 0 ? (
                                 <div className="p-4 text-center text-slate-500 text-sm">Nenhuma pendência urgente.</div>
                             ) : (
-                                notifications.map((notif, idx) => (
+                                notifications.map((notif, idx) => {
+                                    const isDueToday = notif.days === 0;
+                                    const isDueTomorrow = notif.days === 1;
+                                    const dueText = isDueToday ? 'Vence Hoje' : (isDueTomorrow ? 'Vence Amanhã' : `Vence em ${notif.days} dias`);
+                                    
+                                    return (
                                     <div key={idx} className="p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors flex items-center justify-between group">
                                         <div className="flex-1">
                                             <p className="font-bold text-white text-sm">{notif.clientName}</p>
@@ -373,11 +399,11 @@ const App: React.FC = () => {
                                             )}
 
                                             <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'}`}>
-                                                {notif.status === 'overdue' ? 'Vencido' : (notif.days === 0 ? 'Vence Hoje' : 'Vence Amanhã')}
+                                                {notif.status === 'overdue' ? 'Vencido' : dueText}
                                             </span>
                                         </div>
                                     </div>
-                                ))
+                                )})
                             )}
                         </div>
                     </div>
@@ -486,6 +512,7 @@ const App: React.FC = () => {
           onTogglePayment={handleTogglePayment}
           onDuplicate={handleDuplicateClient}
           onUpdateAnnotation={handleUpdateAnnotation}
+          warningDays={warningDays}
         />
       </main>
 
@@ -535,6 +562,49 @@ const App: React.FC = () => {
                         </button>
                     </div>
                 )}
+            </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-sm w-full shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Settings className="text-slate-400" /> Configurações
+                    </h3>
+                    <button onClick={() => setShowSettingsModal(false)} className="text-slate-400 hover:text-white">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="mb-6">
+                    <label className="block text-xs text-slate-400 mb-2 uppercase font-bold">Antecedência de Alerta (Dias)</label>
+                    <p className="text-xs text-slate-500 mb-3">Defina quantos dias antes do vencimento as parcelas devem ficar amarelas (alerta).</p>
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setWarningDays(Math.max(0, warningDays - 1))}
+                            className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-white hover:bg-slate-700"
+                        >
+                            -
+                        </button>
+                        <span className="text-2xl font-bold text-white w-12 text-center">{warningDays}</span>
+                        <button 
+                            onClick={() => setWarningDays(Math.min(30, warningDays + 1))}
+                            className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-white hover:bg-slate-700"
+                        >
+                            +
+                        </button>
+                    </div>
+                </div>
+
+                <button 
+                    onClick={() => setShowSettingsModal(false)}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg transition-colors"
+                >
+                    Salvar
+                </button>
             </div>
         </div>
       )}

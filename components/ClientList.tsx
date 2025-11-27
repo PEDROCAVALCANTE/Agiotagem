@@ -9,6 +9,7 @@ interface ClientListProps {
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
   onDuplicate: (client: Client) => void;
   onUpdateAnnotation: (id: string, note: string) => void;
+  warningDays: number;
 }
 
 interface GroupedClient {
@@ -24,7 +25,7 @@ interface GroupedClient {
   totalInstallmentCount: number;
 }
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation, warningDays }) => {
   // Use Name as the key for expansion since we are grouping by name
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
@@ -92,7 +93,9 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     const days = getDaysUntilDue(installment.dueDate);
 
     if (days < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue
-    if (days <= 1) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; // Due soon (Today or Tomorrow)
+    
+    // Dynamic Warning Window
+    if (days >= 0 && days <= warningDays) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; 
     
     return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
   };
@@ -105,6 +108,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     if (days < 0) return 'VENCIDO';
     if (days === 0) return 'HOJE';
     if (days === 1) return 'AMANHÃ';
+    if (days > 1 && days <= warningDays) return `EM ${days} DIAS`;
+    
     return 'ABERTO';
   }
 
