@@ -255,6 +255,20 @@ const App: React.FC = () => {
     setClientToDuplicate(null);
   };
 
+  const handleUpdateClient = (updatedClient: Client) => {
+    setClients(prev => {
+        const updated = prev.map(c => {
+            if (c.id === updatedClient.id) {
+                const newClient = { ...updatedClient, lastUpdated: Date.now() };
+                if (isCloudConnected) saveClientToCloud(newClient);
+                return newClient;
+            }
+            return c;
+        });
+        return updated;
+    });
+  };
+
   const handleDuplicateClient = (client: Client) => {
     setClientToDuplicate(client);
     setShowForm(true);
@@ -490,6 +504,7 @@ const App: React.FC = () => {
           onTogglePayment={handleTogglePayment}
           onDuplicate={handleDuplicateClient}
           onUpdateAnnotation={handleUpdateAnnotation}
+          onUpdateClient={handleUpdateClient}
           warningDays={warningDays}
           focusTarget={focusTarget}
         />

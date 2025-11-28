@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency, getDaysUntilDue, generateWhatsAppLink } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle, Clock } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle, Clock, CalendarDays, DollarSign } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -9,6 +9,7 @@ interface ClientListProps {
   onTogglePayment: (clientId: string, installmentNumber: number) => void;
   onDuplicate: (client: Client) => void;
   onUpdateAnnotation: (id: string, note: string) => void;
+  onUpdateClient: (client: Client) => void;
   warningDays: number;
   focusTarget?: { name: string, timestamp: number } | null;
 }
@@ -26,7 +27,7 @@ interface GroupedClient {
   totalInstallmentCount: number;
 }
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation, warningDays, focusTarget }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation, onUpdateClient, warningDays, focusTarget }) => {
   // Use Name as the key for expansion since we are grouping by name
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
@@ -170,6 +171,27 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
       return isExpanded ? 'bg-slate-700/50 border-transparent' : 'hover:bg-slate-700/30 border-transparent';
   };
 
+  // Logic to handle Principal Change and update Interest Rate accordingly
+  const handlePrincipalChange = (loan: Client, newPrincipalStr: string) => {
+    const newPrincipal = parseFloat(newPrincipalStr);
+    if (isNaN(newPrincipal) || newPrincipal <= 0) return;
+
+    // Calculate total receivable based on existing installments
+    const totalReceivable = loan.installmentsList.reduce((sum, inst) => sum + inst.value, 0);
+    
+    // New Profit
+    const newProfit = totalReceivable - newPrincipal;
+    
+    // New Rate
+    const newRate = (newProfit / newPrincipal) * 100;
+
+    onUpdateClient({
+      ...loan,
+      principal: newPrincipal,
+      interestRate: newRate
+    });
+  };
+
   if (clients.length === 0) {
     return (
       <div className="text-center py-12 bg-slate-800/50 border border-slate-700/50 rounded-xl border-dashed">
@@ -278,56 +300,140 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                 {group.loans.map((loan, index) => {
                                     const loanTotalReturn = loan.principal * (1 + loan.interestRate / 100);
                                     const loanProfit = loanTotalReturn - loan.principal;
-                                    const dateFormatted = loan.startDate.split('-').reverse().join('/');
+                                    
+                                    // Calculate last installment date (Vencimento Final)
+                                    const lastInstallment = loan.installmentsList.length > 0 ? loan.installmentsList[loan.installmentsList.length - 1] : null;
+                                    const endDateFormatted = lastInstallment ? lastInstallment.dueDate.split('-').reverse().join('/') : 'N/A';
+
+                                    // Next Installment Logic
+                                    const nextInstallment = loan.installmentsList.find(i => !i.isPaid);
+
                                     const loanPaidCount = loan.installmentsList.filter(i => i.isPaid).length;
                                     const loanProgress = (loanPaidCount / loan.installments) * 100;
 
                                     return (
                                         <div key={loan.id} className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden mb-4 last:mb-0 shadow-lg">
                                             {/* Loan Header */}
-                                            <div className="bg-slate-900/80 p-4 border-b border-slate-700 flex flex-wrap justify-between items-center gap-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="bg-slate-800 p-2 rounded-lg border border-slate-700 text-slate-400 font-mono text-xs text-center">
-                                                        <div className="uppercase text-[10px] text-slate-500">Início</div>
-                                                        <div className="font-bold text-white">{dateFormatted}</div>
-                                                    </div>
-                                                    <div>
+                                            <div className="bg-slate-900/80 p-4 border-b border-slate-700">
+                                                <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
+                                                    {/* Principal & Name & Status */}
+                                                    <div className="flex flex-col gap-2">
+                                                        {/* Editable Name Input */}
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-white font-bold text-lg">{formatCurrency(loan.principal)}</span>
+                                                            <User size={14} className="text-slate-500" />
+                                                            <input 
+                                                                type="text"
+                                                                defaultValue={loan.name}
+                                                                className="bg-transparent border-b border-dashed border-slate-600 text-white font-medium focus:outline-none focus:border-blue-500 w-48 text-sm hover:border-slate-400 transition-colors"
+                                                                onBlur={(e) => {
+                                                                    if (e.target.value !== loan.name) {
+                                                                        onUpdateClient({ ...loan, name: e.target.value });
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700 shadow-sm">
+                                                                <span className="text-[10px] text-slate-500 block uppercase font-bold tracking-wider mb-0.5">Valor Principal (Editável)</span>
+                                                                <div className="flex items-center">
+                                                                    <span className="text-slate-500 font-bold mr-1">R$</span>
+                                                                    <input 
+                                                                        type="number"
+                                                                        step="0.01"
+                                                                        defaultValue={loan.principal}
+                                                                        className="bg-transparent text-white font-bold text-xl w-32 focus:outline-none focus:border-b focus:border-blue-500"
+                                                                        onBlur={(e) => handlePrincipalChange(loan, e.target.value)}
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                             {getStatusBadge(loan.status)}
                                                         </div>
-                                                        <div className="text-xs text-slate-400 flex items-center gap-2">
-                                                            <TrendingUp size={12} /> Taxa: <span className="text-emerald-400">{loan.interestRate.toFixed(1)}%</span>
-                                                            <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
-                                                            Lucro: <span className="text-emerald-400">+{formatCurrency(loanProfit)}</span>
+                                                    </div>
+
+                                                    {/* Actions & Progress */}
+                                                    <div className="flex items-center gap-3">
+                                                         <div className="text-right mr-2 hidden sm:block">
+                                                            <div className="text-[10px] text-slate-500 uppercase font-bold">Progresso</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${loanProgress}%` }}></div>
+                                                                </div>
+                                                                <span className="text-xs text-blue-400 font-mono">{loanPaidCount}/{loan.installments}</span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex gap-1">
+                                                            <button 
+                                                                onClick={() => onDuplicate(loan)}
+                                                                className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition-colors"
+                                                                title="Duplicar este empréstimo"
+                                                            >
+                                                                <Copy size={18} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => onDelete(loan.id)}
+                                                                className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition-colors"
+                                                                title="Excluir este empréstimo"
+                                                            >
+                                                                <Trash2 size={18} />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-right mr-4 hidden sm:block">
-                                                        <div className="text-[10px] text-slate-500 uppercase font-bold">Progresso</div>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                                                                <div className="h-full bg-blue-500" style={{ width: `${loanProgress}%` }}></div>
-                                                            </div>
-                                                            <span className="text-xs text-blue-400 font-mono">{loanPaidCount}/{loan.installments}</span>
-                                                        </div>
+                                                {/* Detailed Breakdown Grid */}
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                    {/* Editable Start Date */}
+                                                    <div className="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                                                        <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 mb-1">
+                                                            <Calendar size={12} /> Data Início (Editável)
+                                                        </span>
+                                                        <input 
+                                                            type="date"
+                                                            defaultValue={loan.startDate}
+                                                            className="bg-transparent text-sm text-slate-200 font-mono font-medium focus:outline-none focus:text-blue-400 w-full"
+                                                            onBlur={(e) => {
+                                                                if (e.target.value !== loan.startDate) {
+                                                                    onUpdateClient({ ...loan, startDate: e.target.value });
+                                                                }
+                                                            }}
+                                                        />
                                                     </div>
-                                                    <button 
-                                                        onClick={() => onDuplicate(loan)}
-                                                        className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-700 rounded-lg transition-colors"
-                                                        title="Duplicar este empréstimo"
-                                                    >
-                                                        <Copy size={18} />
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => onDelete(loan.id)}
-                                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-lg transition-colors"
-                                                        title="Excluir este empréstimo"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
+
+                                                    {/* Interest Rate */}
+                                                    <div className="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                                                        <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 mb-1">
+                                                            <TrendingUp size={12} /> Taxa de Juros
+                                                        </span>
+                                                        <span className="text-sm text-blue-400 font-bold">{loan.interestRate.toFixed(2)}%</span>
+                                                    </div>
+
+                                                    {/* Total Profit */}
+                                                    <div className="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                                                        <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 mb-1">
+                                                            <DollarSign size={12} /> Lucro Total
+                                                        </span>
+                                                        <span className="text-sm text-emerald-400 font-bold">+{formatCurrency(loanProfit)}</span>
+                                                    </div>
+
+                                                    {/* Next Due / End Date */}
+                                                     {nextInstallment ? (
+                                                         <div className="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50 relative overflow-hidden">
+                                                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500/50"></div>
+                                                            <span className="text-[10px] text-orange-400/80 uppercase font-bold flex items-center gap-1.5 mb-1 ml-1">
+                                                                <Clock size={12} /> Próx. Vencimento
+                                                            </span>
+                                                            <span className="text-sm text-orange-300 font-mono font-medium ml-1">{nextInstallment.dueDate.split('-').reverse().join('/')}</span>
+                                                        </div>
+                                                    ) : (
+                                                         <div className="bg-slate-800/50 p-2.5 rounded-lg border border-slate-700/50">
+                                                            <span className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 mb-1">
+                                                                <CalendarDays size={12} /> Finalizado Em
+                                                            </span>
+                                                            <span className="text-sm text-slate-400 font-mono font-medium">{endDateFormatted}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -362,9 +468,9 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                         const statusColor = getInstallmentStatusColor(inst);
                                                         const statusText = getStatusText(inst);
                                                         const displayDate = inst.dueDate.split('-').reverse().join('/');
-                                                        // Critical check for button visibility: Overdue (days < 0) or Today (days == 0)
+                                                        // Critical check for button visibility: Overdue (days < 0) or Today (days == 0) or Tomorrow (days == 1)
                                                         const days = getDaysUntilDue(inst.dueDate);
-                                                        const isCritical = days <= 0 && !inst.isPaid;
+                                                        const showWhatsAppButton = days <= 1 && !inst.isPaid;
 
                                                         return (
                                                             <div key={inst.number} className={`border rounded-lg p-3 transition-all ${statusColor}`}>
@@ -382,7 +488,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                                         <div className="font-bold text-lg mt-1">{formatCurrency(inst.value)}</div>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        {isCritical && loan.phone && (
+                                                                        {showWhatsAppButton && loan.phone && (
                                                                            <a 
                                                                              href={generateWhatsAppLink(loan.phone, loan.name, inst.number, inst.value, inst.dueDate)}
                                                                              target="_blank"
