@@ -39,14 +39,27 @@ export const generateWhatsAppLink = (phone: string, clientName: string, installm
       cleanPhone = '55' + cleanPhone;
   }
 
-  // 3. Format Date
-  const dateFormatted = dueDate.split('-').reverse().join('/');
+  // 3. Prepare Data
   const valueFormatted = formatCurrency(value);
+  const dateFormatted = dueDate.split('-').reverse().join('/');
+  const days = getDaysUntilDue(dueDate);
 
   // 4. Construct Message
-  const message = `Olá ${clientName}, tudo bem?
-Passando para lembrar da parcela *#${installmentNumber}* no valor de *${valueFormatted}* que venceu dia *${dateFormatted}*.
-Podemos verificar o pagamento?`;
+  // "Opa Aqui é o Giliarde tudo certo? Passando para lembrar da parcela (X) que vence logo logo!"
+  
+  const intro = "Opa Aqui é o Giliarde tudo certo?";
+  const core = `Passando para lembrar da parcela *#${installmentNumber}* no valor de *${valueFormatted}*`;
+  
+  let suffix = "";
+  if (days < 0) {
+      suffix = `que venceu dia *${dateFormatted}*.`;
+  } else if (days === 0) {
+      suffix = `que vence hoje!`;
+  } else {
+      suffix = `que vence logo logo!`;
+  }
+
+  const message = `${intro} ${core} ${suffix}`;
 
   // 5. Return URL
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;

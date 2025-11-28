@@ -127,16 +127,19 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     
     const days = getDaysUntilDue(installment.dueDate);
 
-    // Red: Overdue (days < 0)
+    // 1. Overdue (Vermelho)
     if (days < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; 
     
-    // Orange: Due Today (0) or Tomorrow (1) - The "24h" logic
-    if (days >= 0 && days <= 1) return 'bg-orange-500/10 border-orange-500/50 text-orange-400'; 
+    // 2. Urgent: Today or Tomorrow (Laranja)
+    // covers days 0 and 1
+    if (days <= 1) return 'bg-orange-500/10 border-orange-500/50 text-orange-400'; 
     
-    // Warning Setting: If warningDays is larger than 1, allow slight yellow/orange tint for those too
-    if (days > 1 && days <= warningDays) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400';
+    // 3. Warning Setting (Amarelo)
+    // This catches days > 1 but <= warningDays
+    if (days <= warningDays) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400';
 
-    return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
+    // 4. Future (Neutro/Verde)
+    return 'bg-slate-700/50 border-slate-600 text-slate-300'; 
   };
 
   const getStatusText = (installment: Installment) => {
@@ -437,7 +440,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                 </div>
                                             </div>
 
-                                            {/* Installments Grid & Annotation */}
+                                            {/* Installments Grid */}
                                             <div className="p-4 bg-slate-900/50">
                                                 <div className="flex items-center justify-between mb-3">
                                                     <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
