@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency, getDaysUntilDue, generateWhatsAppLink } from '../constants';
-import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle } from 'lucide-react';
+import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle, Clock } from 'lucide-react';
 
 interface ClientListProps {
   clients: Client[];
@@ -20,7 +20,7 @@ interface GroupedClient {
   totalPrincipal: number;
   totalReturn: number;
   totalProfit: number;
-  overallStatus: 'Active' | 'Completed' | 'Late';
+  overallStatus: 'Active' | 'Completed' | 'Late' | 'Warning';
   earliestDate: string;
   totalPaidCount: number;
   totalInstallmentCount: number;
@@ -50,7 +50,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
           totalPrincipal: 0,
           totalReturn: 0,
           totalProfit: 0,
-          overallStatus: 'Completed', // Start with Completed, downgrade to Active or Late
+          overallStatus: 'Completed', // Start with Completed, downgrade based on finding
           earliestDate: client.startDate,
           totalPaidCount: 0,
           totalInstallmentCount: 0
@@ -76,10 +76,26 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
         g.earliestDate = client.startDate;
       }
 
-      // Determine Overall Status Priority: Late > Active > Completed
-      if (client.status === 'Late') {
+      // Check Installments for Status
+      let hasOverdue = false;
+      let hasWarning = false;
+      let hasActive = false;
+
+      client.installmentsList.forEach(inst => {
+          if (!inst.isPaid) {
+              const days = getDaysUntilDue(inst.dueDate);
+              if (days < 0) hasOverdue = true;
+              else if (days <= 1) hasWarning = true; // Today (0) or Tomorrow (1)
+              else hasActive = true;
+          }
+      });
+
+      // Determine Overall Status Priority: Late > Warning > Active > Completed
+      if (hasOverdue) {
         g.overallStatus = 'Late';
-      } else if (client.status === 'Active' && g.overallStatus !== 'Late') {
+      } else if (hasWarning && g.overallStatus !== 'Late') {
+        g.overallStatus = 'Warning';
+      } else if (hasActive && g.overallStatus !== 'Late' && g.overallStatus !== 'Warning') {
         g.overallStatus = 'Active';
       }
     });
@@ -110,12 +126,15 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     
     const days = getDaysUntilDue(installment.dueDate);
 
-    // Red: Overdue OR Due Today (days <= 0)
-    if (days <= 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; 
+    // Red: Overdue (days < 0)
+    if (days < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; 
     
-    // Orange: Upcoming within warning window (days > 0)
-    if (days > 0 && days <= warningDays) return 'bg-orange-500/10 border-orange-500/50 text-orange-400'; 
+    // Orange: Due Today (0) or Tomorrow (1) - The "24h" logic
+    if (days >= 0 && days <= 1) return 'bg-orange-500/10 border-orange-500/50 text-orange-400'; 
     
+    // Warning Setting: If warningDays is larger than 1, allow slight yellow/orange tint for those too
+    if (days > 1 && days <= warningDays) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400';
+
     return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
   };
 
@@ -136,9 +155,20 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     switch(status) {
         case 'Completed': return <span className="bg-blue-500/20 text-blue-400 text-[10px] px-2 py-0.5 rounded border border-blue-500/30 uppercase font-bold">Concluído</span>;
         case 'Late': return <span className="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded border border-red-500/30 uppercase font-bold flex items-center gap-1"><AlertTriangle size={10} /> Atrasado</span>;
+        case 'Warning': return <span className="bg-orange-500/20 text-orange-400 text-[10px] px-2 py-0.5 rounded border border-orange-500/30 uppercase font-bold flex items-center gap-1"><Clock size={10} /> Vence Logo</span>;
         default: return <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/30 uppercase font-bold">Ativo</span>;
     }
   }
+
+  const getRowStyle = (isLate: boolean, isWarning: boolean, isExpanded: boolean) => {
+      if (isLate) {
+          return isExpanded ? 'bg-red-500/10 border-red-500' : 'bg-red-900/10 border-red-500/50 hover:bg-red-900/20';
+      }
+      if (isWarning) {
+          return isExpanded ? 'bg-orange-500/10 border-orange-500' : 'bg-orange-900/10 border-orange-500/50 hover:bg-orange-900/20';
+      }
+      return isExpanded ? 'bg-slate-700/50 border-transparent' : 'hover:bg-slate-700/30 border-transparent';
+  };
 
   if (clients.length === 0) {
     return (
@@ -167,23 +197,21 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
               const globalProgress = group.totalInstallmentCount > 0 
                 ? (group.totalPaidCount / group.totalInstallmentCount) * 100 
                 : 0;
+              
               const isLate = group.overallStatus === 'Late';
+              const isWarning = group.overallStatus === 'Warning';
 
               return (
                 <React.Fragment key={group.name}>
                   <tr 
                     id={`client-row-${group.name}`}
-                    className={`transition-all border-l-4 ${
-                        isLate 
-                            ? (isExpanded ? 'bg-red-500/10 border-red-500' : 'bg-red-900/10 border-red-500/50 hover:bg-red-900/20')
-                            : (isExpanded ? 'bg-slate-700/50 border-transparent' : 'hover:bg-slate-700/30 border-transparent')
-                    }`}
+                    className={`transition-all border-l-4 ${getRowStyle(isLate, isWarning, isExpanded)}`}
                   >
                     <td className="px-6 py-4 cursor-pointer" onClick={() => toggleExpand(group.name)}>
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2">
-                             <User size={14} className={isLate ? "text-red-400" : "text-blue-400"}/> 
+                             <User size={14} className={isLate ? "text-red-400" : (isWarning ? "text-orange-400" : "text-blue-400")}/> 
                              {group.name}
                           </div>
                           {getStatusBadge(group.overallStatus)}
@@ -208,7 +236,10 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                     <td className="px-6 py-4">
                        <div className="flex items-center gap-2 w-32">
                           <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden">
-                             <div className={`h-full transition-all duration-500 ${isLate ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${globalProgress}%` }}></div>
+                             <div 
+                                className={`h-full transition-all duration-500 ${isLate ? 'bg-red-500' : (isWarning ? 'bg-orange-500' : 'bg-emerald-500')}`} 
+                                style={{ width: `${globalProgress}%` }}
+                             ></div>
                           </div>
                           <span className="text-xs text-slate-400 font-mono">{Math.round(globalProgress)}%</span>
                        </div>
@@ -331,7 +362,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                         const statusColor = getInstallmentStatusColor(inst);
                                                         const statusText = getStatusText(inst);
                                                         const displayDate = inst.dueDate.split('-').reverse().join('/');
-                                                        // Important: Use <= 0 for checking "Overdue/Today" logic for the button too
+                                                        // Critical check for button visibility: Overdue (days < 0) or Today (days == 0)
                                                         const days = getDaysUntilDue(inst.dueDate);
                                                         const isCritical = days <= 0 && !inst.isPaid;
 
