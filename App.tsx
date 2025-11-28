@@ -6,7 +6,7 @@ import { ChartSection } from './components/ChartSection';
 import { ClientForm } from './components/ClientForm';
 import { ClientList } from './components/ClientList';
 import { initFirebase, subscribeToClients, saveClientToCloud, syncAllToCloud, isCloudEnabled, FirebaseConfig } from './services/cloudService';
-import { LayoutDashboard, Plus, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle, Settings } from 'lucide-react';
+import { LayoutDashboard, Plus, Bell, Cloud, CloudOff, X, Save, Search, AlertTriangle, MessageCircle, Settings, ExternalLink } from 'lucide-react';
 
 const App: React.FC = () => {
   // Cloud Config State - Default to the hardcoded config provided by user
@@ -43,6 +43,9 @@ const App: React.FC = () => {
   });
 
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // State to handle navigation from notification to client list
+  const [focusTarget, setFocusTarget] = useState<{name: string, timestamp: number} | null>(null);
 
   // Filter out soft-deleted clients for the UI and Sort Alphabetically
   const activeClients = useMemo(() => {
@@ -139,22 +142,29 @@ const App: React.FC = () => {
         status: 'overdue' | 'due' 
     }[] = [];
 
-    activeClients.forEach(client => {
+    // CRITICAL FIX: Use ALL non-deleted clients for notifications, not just the search results (activeClients).
+    // This ensures notifications persist even when searching for a different user.
+    const allNonDeletedClients = clients.filter(c => !c.isDeleted);
+
+    allNonDeletedClients.forEach(client => {
       client.installmentsList?.forEach(inst => {
         if (!inst.isPaid) {
           const days = getDaysUntilDue(inst.dueDate);
 
-          if (days < 0) {
+          // Update: <= 0 is Overdue/Today (Red)
+          if (days <= 0) {
              alerts.push({ 
                  clientName: client.name, 
-                 phone: client.phone,
+                 phone: client.phone, 
                  installment: inst.number, 
                  value: inst.value, 
                  dueDate: inst.dueDate,
                  days: days, 
                  status: 'overdue' 
              });
-          } else if (days >= 0 && days <= warningDays) { // Dynamic warning window
+          } 
+          // Update: > 0 and <= warningDays is Warning (Orange)
+          else if (days > 0 && days <= warningDays) {
              alerts.push({ 
                  clientName: client.name, 
                  phone: client.phone, 
@@ -168,35 +178,44 @@ const App: React.FC = () => {
         }
       });
     });
-    return alerts;
-  }, [activeClients, warningDays]);
+    
+    // Sort: Overdue first, then by date ascending
+    return alerts.sort((a, b) => {
+        if (a.status === 'overdue' && b.status !== 'overdue') return -1;
+        if (b.status === 'overdue' && a.status !== 'overdue') return 1;
+        return a.days - b.days;
+    });
+  }, [clients, warningDays]); // Dependency is 'clients', not 'activeClients'
 
   const hasOverdueNotifications = useMemo(() => notifications.some(n => n.status === 'overdue'), [notifications]);
 
   const progressionData = useMemo(() => calculateProgression(activeClients), [activeClients]);
 
   const financialSummary: FinancialSummary = useMemo(() => {
-    return activeClients.reduce((acc, client) => {
-      const totalReturn = client.principal * (1 + client.interestRate / 100);
-      const profit = totalReturn - client.principal;
-      
-      const paidInstallments = client.installmentsList?.filter(i => i.isPaid).length || 0;
-      const roi = client.interestRate;
+    // We calculate the summary based on ALL non-deleted clients (Global Portfolio), ignoring the search filter
+    const nonDeleted = clients.filter(c => !c.isDeleted);
+    
+    // Calculate Financials (Total History + Current)
+    const totalInvested = nonDeleted.reduce((sum, c) => sum + c.principal, 0);
+    const totalRevenueExpected = nonDeleted.reduce((sum, c) => sum + (c.principal * (1 + c.interestRate/100)), 0);
+    const totalProfit = nonDeleted.reduce((sum, c) => sum + (c.principal * (1 + c.interestRate/100) - c.principal), 0);
 
-      return {
-        totalInvested: acc.totalInvested + client.principal,
-        totalRevenueExpected: acc.totalRevenueExpected + totalReturn,
-        totalProfit: acc.totalProfit + profit,
-        activeClients: acc.activeClients + 1,
-        averageRoi: acc.averageRoi + roi
-      };
-    }, { totalInvested: 0, totalRevenueExpected: 0, totalProfit: 0, activeClients: 0, averageRoi: 0 });
-  }, [activeClients]);
+    // Calculate Active Clients (Unique names with at least one active loan)
+    const activeNames = new Set<string>();
+    nonDeleted.forEach(c => {
+        if (c.status !== 'Completed') {
+            activeNames.add(c.name.trim().toLowerCase());
+        }
+    });
 
-  // Adjust average ROI
-  if (financialSummary.activeClients > 0) {
-    financialSummary.averageRoi = financialSummary.averageRoi / financialSummary.activeClients;
-  }
+    return {
+      totalInvested,
+      totalRevenueExpected,
+      totalProfit,
+      activeClients: activeNames.size,
+      averageRoi: 0 // Not used in dashboard cards
+    };
+  }, [clients]);
 
   const handleCloudConfigSubmit = () => {
     try {
@@ -287,7 +306,7 @@ const App: React.FC = () => {
         updatedClient = { 
             ...client, 
             installmentsList: updatedInstallments, 
-            status: newStatus,
+            status: newStatus, 
             lastUpdated: Date.now() 
         };
         return updatedClient;
@@ -298,6 +317,15 @@ const App: React.FC = () => {
     if (isCloudConnected && updatedClient) {
         saveClientToCloud(updatedClient);
     }
+  };
+
+  // Handle clicking a notification to navigate to the client
+  const handleNotificationClick = (clientName: string) => {
+    // Clear search so the client is visible in the list
+    setSearchQuery('');
+    // Trigger focus logic in ClientList
+    setFocusTarget({ name: clientName, timestamp: Date.now() });
+    setShowNotifications(false);
   };
 
   // Seed Data function for empty states
@@ -346,7 +374,7 @@ const App: React.FC = () => {
                 >
                     <Bell size={22} />
                     {notifications.length > 0 && (
-                        <span className={`absolute top-0 right-0 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse ${hasOverdueNotifications ? 'bg-red-500' : 'bg-yellow-500'}`}>
+                        <span className={`absolute top-0 right-0 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center animate-pulse ${hasOverdueNotifications ? 'bg-red-500' : 'bg-orange-500'}`}>
                             {notifications.length}
                         </span>
                     )}
@@ -368,14 +396,21 @@ const App: React.FC = () => {
                                     const dueText = isDueToday ? 'Vence Hoje' : (isDueTomorrow ? 'Vence Amanhã' : `Vence em ${notif.days} dias`);
                                     
                                     return (
-                                    <div key={idx} className="p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors flex items-center justify-between group">
+                                    <div 
+                                        key={idx} 
+                                        className="p-3 border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors flex items-center justify-between group cursor-pointer"
+                                        onClick={() => handleNotificationClick(notif.clientName)}
+                                    >
                                         <div className="flex-1">
-                                            <p className="font-bold text-white text-sm">{notif.clientName}</p>
+                                            <p className="font-bold text-white text-sm flex items-center gap-2">
+                                                {notif.clientName}
+                                                <ExternalLink size={10} className="text-slate-500 group-hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity"/>
+                                            </p>
                                             <p className="text-xs text-slate-400">Parc. #{notif.installment} - {formatCurrency(notif.value)}</p>
                                         </div>
                                         
-                                        <div className="flex items-center gap-2">
-                                            {/* WhatsApp Button for Overdue items */}
+                                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                            {/* WhatsApp Button for Overdue/Today items */}
                                             {notif.status === 'overdue' && notif.phone && (
                                                 <a 
                                                     href={generateWhatsAppLink(notif.phone, notif.clientName, notif.installment, notif.value, notif.dueDate)}
@@ -388,8 +423,8 @@ const App: React.FC = () => {
                                                 </a>
                                             )}
 
-                                            <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'}`}>
-                                                {notif.status === 'overdue' ? 'Vencido' : dueText}
+                                            <span className={`text-[10px] font-bold px-2 py-1 rounded uppercase ${notif.status === 'overdue' ? 'bg-red-500/20 text-red-400 border border-red-500/20' : 'bg-orange-500/20 text-orange-400 border border-orange-500/20'}`}>
+                                                {notif.status === 'overdue' && notif.days < 0 ? 'Vencido' : dueText}
                                             </span>
                                         </div>
                                     </div>
@@ -461,6 +496,7 @@ const App: React.FC = () => {
           onDuplicate={handleDuplicateClient}
           onUpdateAnnotation={handleUpdateAnnotation}
           warningDays={warningDays}
+          focusTarget={focusTarget}
         />
       </main>
 
@@ -529,7 +565,7 @@ const App: React.FC = () => {
 
                 <div className="mb-6">
                     <label className="block text-xs text-slate-400 mb-2 uppercase font-bold">Antecedência de Alerta (Dias)</label>
-                    <p className="text-xs text-slate-500 mb-3">Defina quantos dias antes do vencimento as parcelas devem ficar amarelas (alerta).</p>
+                    <p className="text-xs text-slate-500 mb-3">Defina quantos dias antes do vencimento as parcelas devem ficar laranjas (alerta).</p>
                     <div className="flex items-center gap-4">
                         <button 
                             onClick={() => setWarningDays(Math.max(0, warningDays - 1))}

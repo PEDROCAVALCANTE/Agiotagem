@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Client, Installment } from '../types';
 import { formatCurrency, getDaysUntilDue, generateWhatsAppLink } from '../constants';
 import { Phone, User, Calendar, Trash2, ChevronDown, ChevronUp, CheckCircle, TrendingUp, Copy, Layers, AlertTriangle, StickyNote, MessageCircle } from 'lucide-react';
@@ -10,6 +10,7 @@ interface ClientListProps {
   onDuplicate: (client: Client) => void;
   onUpdateAnnotation: (id: string, note: string) => void;
   warningDays: number;
+  focusTarget?: { name: string, timestamp: number } | null;
 }
 
 interface GroupedClient {
@@ -25,7 +26,7 @@ interface GroupedClient {
   totalInstallmentCount: number;
 }
 
-export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation, warningDays }) => {
+export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTogglePayment, onDuplicate, onUpdateAnnotation, warningDays, focusTarget }) => {
   // Use Name as the key for expansion since we are grouping by name
   const [expandedClientName, setExpandedClientName] = useState<string | null>(null);
 
@@ -87,15 +88,33 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
   }, [clients]);
 
+  // Handle auto-focus/scroll from notifications
+  useEffect(() => {
+    if (focusTarget) {
+      // 1. Expand the client
+      setExpandedClientName(focusTarget.name);
+      
+      // 2. Scroll to the row (wait briefly for expansion to render/state to settle)
+      setTimeout(() => {
+        // We sanitize the name for ID usage just in case, though the key in the loop below matches exact name
+        const element = document.getElementById(`client-row-${focusTarget.name}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    }
+  }, [focusTarget]);
+
   const getInstallmentStatusColor = (installment: Installment) => {
     if (installment.isPaid) return 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400';
     
     const days = getDaysUntilDue(installment.dueDate);
 
-    if (days < 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; // Overdue
+    // Red: Overdue OR Due Today (days <= 0)
+    if (days <= 0) return 'bg-red-500/10 border-red-500/50 text-red-400'; 
     
-    // Dynamic Warning Window
-    if (days >= 0 && days <= warningDays) return 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'; 
+    // Orange: Upcoming within warning window (days > 0)
+    if (days > 0 && days <= warningDays) return 'bg-orange-500/10 border-orange-500/50 text-orange-400'; 
     
     return 'bg-slate-700/50 border-slate-600 text-slate-300'; // Future
   };
@@ -106,7 +125,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
     const days = getDaysUntilDue(installment.dueDate);
 
     if (days < 0) return 'VENCIDO';
-    if (days === 0) return 'HOJE';
+    if (days === 0) return 'VENCE HOJE';
     if (days === 1) return 'AMANHÃ';
     if (days > 1 && days <= warningDays) return `EM ${days} DIAS`;
     
@@ -148,15 +167,23 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
               const globalProgress = group.totalInstallmentCount > 0 
                 ? (group.totalPaidCount / group.totalInstallmentCount) * 100 
                 : 0;
+              const isLate = group.overallStatus === 'Late';
 
               return (
                 <React.Fragment key={group.name}>
-                  <tr className={`transition-colors ${isExpanded ? 'bg-slate-700/50' : 'hover:bg-slate-700/30'}`}>
+                  <tr 
+                    id={`client-row-${group.name}`}
+                    className={`transition-all border-l-4 ${
+                        isLate 
+                            ? (isExpanded ? 'bg-red-500/10 border-red-500' : 'bg-red-900/10 border-red-500/50 hover:bg-red-900/20')
+                            : (isExpanded ? 'bg-slate-700/50 border-transparent' : 'hover:bg-slate-700/30 border-transparent')
+                    }`}
+                  >
                     <td className="px-6 py-4 cursor-pointer" onClick={() => toggleExpand(group.name)}>
                       <div className="flex flex-col">
                         <span className="font-medium text-white flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-2">
-                             <User size={14} className="text-blue-400"/> 
+                             <User size={14} className={isLate ? "text-red-400" : "text-blue-400"}/> 
                              {group.name}
                           </div>
                           {getStatusBadge(group.overallStatus)}
@@ -181,7 +208,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                     <td className="px-6 py-4">
                        <div className="flex items-center gap-2 w-32">
                           <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden">
-                             <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${globalProgress}%` }}></div>
+                             <div className={`h-full transition-all duration-500 ${isLate ? 'bg-red-500' : 'bg-emerald-500'}`} style={{ width: `${globalProgress}%` }}></div>
                           </div>
                           <span className="text-xs text-slate-400 font-mono">{Math.round(globalProgress)}%</span>
                        </div>
@@ -304,8 +331,9 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                         const statusColor = getInstallmentStatusColor(inst);
                                                         const statusText = getStatusText(inst);
                                                         const displayDate = inst.dueDate.split('-').reverse().join('/');
+                                                        // Important: Use <= 0 for checking "Overdue/Today" logic for the button too
                                                         const days = getDaysUntilDue(inst.dueDate);
-                                                        const isOverdue = days < 0 && !inst.isPaid;
+                                                        const isCritical = days <= 0 && !inst.isPaid;
 
                                                         return (
                                                             <div key={inst.number} className={`border rounded-lg p-3 transition-all ${statusColor}`}>
@@ -323,7 +351,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, onDelete, onTog
                                                                         <div className="font-bold text-lg mt-1">{formatCurrency(inst.value)}</div>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        {isOverdue && loan.phone && (
+                                                                        {isCritical && loan.phone && (
                                                                            <a 
                                                                              href={generateWhatsAppLink(loan.phone, loan.name, inst.number, inst.value, inst.dueDate)}
                                                                              target="_blank"

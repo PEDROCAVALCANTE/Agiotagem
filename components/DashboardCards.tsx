@@ -29,13 +29,13 @@ export const DashboardCards: React.FC<DashboardCardsProps> = ({ summary }) => {
         color="bg-blue-500/20 text-blue-400"
       />
       <Card 
-        title="Retorno Esperado" 
+        title="Retorno Total Esperado" 
         value={formatCurrency(summary.totalRevenueExpected)} 
         icon={<DollarSign className="text-emerald-400" size={24} />}
         color="bg-emerald-500/20 text-emerald-400"
       />
       <Card 
-        title="Lucro Líquido" 
+        title="Lucro Total" 
         value={formatCurrency(summary.totalProfit)} 
         icon={<TrendingUp className="text-purple-400" size={24} />}
         color="bg-purple-500/20 text-purple-400"
